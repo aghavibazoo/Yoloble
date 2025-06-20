@@ -1,0 +1,2913 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YOLO Bounding Box Editor - Enhanced Download Options</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #2d2d2d;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #333;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .btn {
+            background: #4a90e2;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #357abd;
+        }
+
+        .btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .info {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+            font-size: 14px;
+        }
+
+        .main-container {
+            display: flex;
+            height: calc(100vh - 60px);
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            background: #0a0a0a;
+            overflow: hidden;
+        }
+
+        #canvas {
+            cursor: crosshair;
+            display: block;
+        }
+
+        .sidebar {
+            width: 350px;
+            background: #2d2d2d;
+            border-left: 2px solid #333;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .section {
+            margin-bottom: 25px;
+        }
+
+        .section h3 {
+            margin-bottom: 10px;
+            color: #4a90e2;
+            font-size: 16px;
+        }
+
+        .class-selector {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 5px;
+            margin-bottom: 15px;
+        }
+
+        .class-btn {
+            background: #444;
+            color: white;
+            border: none;
+            padding: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+
+        .class-btn:hover {
+            background: #555;
+        }
+
+        .class-btn.active {
+            background: #4a90e2;
+        }
+
+        .box-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+
+        .box-item {
+            padding: 8px 12px;
+            border-bottom: 1px solid #444;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+
+        .box-item:hover {
+            background: #333;
+        }
+
+        .box-item.selected {
+            background: #4a90e2;
+        }
+
+        .box-item:last-child {
+            border-bottom: none;
+        }
+
+        .delete-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .delete-btn:hover {
+            background: #c0392b;
+        }
+
+        /* Enhanced Filter Styles */
+        .filter-section {
+            background: #333;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .filter-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .filter-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .filter-input {
+            background: #444;
+            border: 1px solid #555;
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            flex: 1;
+        }
+
+        .filter-operator {
+            background: #555;
+            border: 1px solid #666;
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .filter-results {
+            font-size: 12px;
+            color: #ccc;
+            margin-top: 10px;
+            padding: 8px;
+            background: #444;
+            border-radius: 4px;
+        }
+
+        .filter-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .stat-box {
+            background: #555;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 11px;
+        }
+
+        .stat-number {
+            font-size: 16px;
+            font-weight: bold;
+            color: #4a90e2;
+        }
+
+        .advanced-filters {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #555;
+        }
+
+        .class-filter-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 5px;
+            margin-top: 10px;
+        }
+
+        .class-filter-btn {
+            background: #444;
+            color: white;
+            border: none;
+            padding: 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            transition: all 0.2s;
+        }
+
+        .class-filter-btn:hover {
+            background: #555;
+        }
+
+        .class-filter-btn.included {
+            background: #28a745;
+        }
+
+        .class-filter-btn.excluded {
+            background: #e74c3c;
+        }
+
+        /* Performance Indicators */
+        .performance-section {
+            background: #333;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .performance-stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            font-size: 12px;
+        }
+
+        .stat-item {
+            background: #444;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #4a90e2;
+        }
+
+        .stat-label {
+            color: #ccc;
+            margin-top: 4px;
+        }
+
+        .database-status {
+            background: #555;
+            padding: 8px;
+            border-radius: 4px;
+            margin-top: 10px;
+            font-size: 11px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+
+        .status-ready {
+            background: #28a745;
+        }
+
+        .status-building {
+            background: #ffc107;
+        }
+
+        .status-error {
+            background: #e74c3c;
+        }
+
+        .zoom-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .zoom-btn {
+            background: #444;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .zoom-btn:hover {
+            background: #555;
+        }
+
+        .zoom-level {
+            font-size: 12px;
+            color: #ccc;
+        }
+
+        .image-nav {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .nav-btn {
+            background: #444;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .nav-btn:hover {
+            background: #555;
+        }
+
+        .nav-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .drag-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(74, 144, 226, 0.1);
+            border: 2px dashed #4a90e2;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            color: #4a90e2;
+            z-index: 1000;
+        }
+
+        .drag-overlay.active {
+            display: flex;
+        }
+
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+
+        .loading-content {
+            background: #2d2d2d;
+            padding: 30px;
+            border-radius: 8px;
+            text-align: center;
+            min-width: 300px;
+        }
+
+        .loading-bar {
+            width: 100%;
+            height: 20px;
+            background: #444;
+            border-radius: 10px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+
+        .loading-progress {
+            height: 100%;
+            background: #4a90e2;
+            width: 0%;
+            transition: width 0.3s;
+            border-radius: 10px;
+        }
+
+        .instructions {
+            background: #333;
+            padding: 15px;
+            border-radius: 4px;
+            font-size: 12px;
+            line-height: 1.6;
+        }
+
+        .instructions h4 {
+            margin-bottom: 8px;
+            color: #4a90e2;
+        }
+
+        .pagination {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .page-input {
+            background: #444;
+            border: 1px solid #555;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            width: 80px;
+            text-align: center;
+        }
+
+        .quick-nav {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .quick-nav-btn {
+            background: #444;
+            color: white;
+            border: none;
+            padding: 4px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+        }
+
+        .quick-nav-btn:hover {
+            background: #555;
+        }
+
+        /* Enhanced Download Dropdown Styles */
+        .download-menu {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: #2d2d2d;
+            border: 1px solid #555;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1000;
+            min-width: 180px;
+            display: none;
+        }
+
+        .download-menu button {
+            width: 100%;
+            background: none;
+            border: none;
+            color: white;
+            padding: 12px 16px;
+            text-align: left;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.2s;
+        }
+
+        .download-menu button:hover {
+            background: #4a90e2;
+        }
+
+        .download-menu button:first-child {
+            border-radius: 4px 4px 0 0;
+        }
+
+        .download-menu button:last-child {
+            border-radius: 0 0 4px 4px;
+        }
+
+        .dropdown {
+            position: relative;
+            display: inline-block;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="controls">
+            <input type="file" id="imageUpload" class="file-input" accept="image/*" multiple>
+            <button class="btn" onclick="document.getElementById('imageUpload').click()">
+                Upload Images
+            </button>
+            <input type="file" id="labelUpload" class="file-input" accept=".txt" multiple>
+            <button class="btn" onclick="document.getElementById('labelUpload').click()">
+                Upload Labels
+            </button>
+            <div class="dropdown" style="position: relative; display: inline-block;">
+                <button class="btn" id="downloadBtn" onclick="toggleDownloadMenu()">
+                    Download Labels ▼
+                </button>
+                <div id="downloadMenu" class="download-menu">
+                    <button onclick="downloadLabels('all')">All Labels</button>
+                    <button onclick="downloadLabels('filtered')">Filtered Labels Only</button>
+                    <button onclick="downloadLabels('current')">Current Image Only</button>
+                </div>
+            </div>
+            <button class="btn btn-success" id="saveBtn" onclick="saveProject()">
+                Save Project
+            </button>
+            <button class="btn" id="undoBtn" onclick="undo()" disabled>
+                Undo (Ctrl+Z)
+            </button>
+            <button class="btn" onclick="exportStats()" title="Export dataset statistics">
+                Stats
+            </button>
+        </div>
+        <div class="info">
+            <div class="image-nav">
+                <button class="nav-btn" id="prevBtn" onclick="previousImage()" disabled>◀ Prev (A)</button>
+                <span id="imageCounter">0 / 0</span>
+                <button class="nav-btn" id="nextBtn" onclick="nextImage()" disabled>Next (D) ▶</button>
+            </div>
+            <div id="imageName">No image loaded</div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="canvas-container">
+            <div class="drag-overlay" id="dragOverlay">
+                Drop images here
+            </div>
+            <canvas id="canvas"></canvas>
+        </div>
+
+        <div class="sidebar">
+            <!-- Performance Section -->
+            <div class="section">
+                <h3>Database Status</h3>
+                <div class="performance-section">
+                    <div class="performance-stats">
+                        <div class="stat-item">
+                            <div class="stat-value" id="totalImages">0</div>
+                            <div class="stat-label">Total Images</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value" id="loadedImages">0</div>
+                            <div class="stat-label">Loaded</div>
+                        </div>
+                    </div>
+                    <div class="database-status">
+                        <div style="display: flex; align-items: center;">
+                            <span class="status-indicator" id="dbStatusIndicator"></span>
+                            <span id="dbStatusText">Database not built</span>
+                        </div>
+                        <button class="btn" onclick="rebuildDatabase()" style="font-size: 10px; padding: 4px 8px;">
+                            Rebuild
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Enhanced Filter Section -->
+            <div class="section">
+                <h3>Smart Filters</h3>
+                <div class="filter-section">
+                    <div class="filter-controls">
+                        <!-- Basic Filters -->
+                        <div class="filter-row">
+                            <select id="filterStatus" class="filter-input">
+                                <option value="">All Status</option>
+                                <option value="labeled">Only Labeled</option>
+                                <option value="unlabeled">Only Unlabeled</option>
+                            </select>
+                            <select id="filterOperator" class="filter-operator">
+                                <option value="AND">AND</option>
+                                <option value="OR">OR</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Single Class Filter -->
+                        <div class="filter-row">
+                            <select id="filterClass" class="filter-input">
+                                <option value="">Any Class</option>
+                            </select>
+                            <button class="btn" onclick="applyFilters()" style="width: 80px;">Apply</button>
+                        </div>
+                        
+                        <button class="btn" onclick="clearFilters()" style="width: 100%;">Clear All Filters</button>
+                    </div>
+
+                    <!-- Advanced Multi-Class Filters -->
+                    <div class="advanced-filters">
+                        <h4 style="color: #4a90e2; margin-bottom: 8px; font-size: 12px;">Multi-Class Filter:</h4>
+                        <div class="class-filter-grid" id="classFilterGrid">
+                            <!-- Dynamic class filter buttons will be added here -->
+                        </div>
+                        <div style="margin-top: 8px; font-size: 10px; color: #ccc;">
+                            Click: Include | Shift+Click: Exclude | Normal: Any
+                        </div>
+                    </div>
+
+                    <!-- Filter Results -->
+                    <div class="filter-results" id="filterResults">
+                        No filters applied
+                    </div>
+                    
+                    <!-- Filter Statistics -->
+                    <div class="filter-stats" id="filterStats">
+                        <div class="stat-box">
+                            <div class="stat-number" id="statTotal">0</div>
+                            <div>Total</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-number" id="statLabeled">0</div>
+                            <div>Labeled</div>
+                        </div>
+                        <div class="stat-box">
+                            <div class="stat-number" id="statFiltered">0</div>
+                            <div>Showing</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Navigation -->
+            <div class="section">
+                <h3>Quick Navigation</h3>
+                <div class="pagination">
+                    <input type="number" id="pageInput" class="page-input" placeholder="Go to..." min="1">
+                    <button class="btn" onclick="goToImage()">Go</button>
+                </div>
+                <div class="quick-nav" id="quickNav">
+                    <!-- Dynamic buttons will be added here -->
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Current Class</h3>
+                <div class="class-selector" id="classSelector"></div>
+            </div>
+
+            <div class="section">
+                <h3>View Controls</h3>
+                <div class="zoom-controls">
+                    <button class="zoom-btn" onclick="zoomOut()">-</button>
+                    <span class="zoom-level" id="zoomLevel">100%</span>
+                    <button class="zoom-btn" onclick="zoomIn()">+</button>
+                    <button class="zoom-btn" onclick="fitToScreen()">Fit</button>
+                    <button class="zoom-btn" onclick="resetZoom()">100%</button>
+                </div>
+                <div>
+                    <label>
+                        <input type="checkbox" id="showBoxes" checked onchange="toggleBoxes()">
+                        Show Boxes (V)
+                    </label>
+                </div>
+            </div>
+
+            <div class="section">
+                <h3>Bounding Boxes</h3>
+                <div class="box-list" id="boxList"></div>
+            </div>
+
+            <div class="section">
+                <div class="instructions">
+                    <h4>Debug Info:</h4>
+                    <div id="debugInfo" style="font-size: 11px; color: #ccc; margin-top: 8px;">
+                        No image loaded
+                    </div>
+                    <button class="btn" onclick="showDetailedDebug()" style="margin-top: 8px; font-size: 10px; padding: 4px 8px;">
+                        Show Debug Console
+                    </button>
+                </div>
+            </div>
+
+            <div class="section">
+                <div class="instructions">
+                    <h4>Download Options:</h4>
+                    • <strong>All Labels:</strong> Download every label file<br>
+                    • <strong>Filtered Labels:</strong> Download only visible/filtered images<br>
+                    • <strong>Current Image:</strong> Download just the current image label<br>
+                    • Perfect for subset training and quality control
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+        <div class="loading-content">
+            <h3 id="loadingTitle">Loading...</h3>
+            <div class="loading-bar">
+                <div class="loading-progress" id="loadingProgress"></div>
+            </div>
+            <div id="loadingStatus">Processing...</div>
+            <button class="btn" onclick="cancelLoading()" id="cancelBtn">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        const CLASS_NAMES = ['Car', 'Pickup truck', 'Van', '2ax Truck', '3ax Truck', '4ax Truck', '5ax+ Truck', '2ax Bus', '3ax Bus'];
+        const HANDLE_SIZE = 8;
+        const COLORS = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500', '#800080', '#ffc0cb'];
+
+        let canvas, ctx;
+        let imageMetadata = [];
+        let imageCache = new Map();
+        let labels = [];
+        let currentImageIndex = 0;
+        let currentClass = 0;
+        let zoom = 1;
+        let panX = 0;
+        let panY = 0;
+        let boxes = [];
+        let selectedBoxIndex = -1;
+        let undoStack = [];
+        let showBoxes = true;
+        let isLoading = false;
+        let loadingCancelled = false;
+
+        // Enhanced Filtering System
+        let labelDatabase = {
+            imageIndex: [], // Per-image metadata
+            classIndex: {}, // Class -> Set of image indices
+            statusIndex: {  // Status -> Set of image indices
+                labeled: new Set(),
+                unlabeled: new Set()
+            },
+            isBuilt: false,
+            lastUpdate: null
+        };
+
+        let filterCache = new Map(); // Cache for filter combinations
+        let currentFilteredIndices = []; // Current active filter result
+        let isFiltered = false; // Whether filters are active
+
+        // Multi-class filter state
+        let classFilterState = {}; // classId -> 'include' | 'exclude' | null
+
+        // Interaction state
+        let isDragging = false;
+        let dragMode = null;
+        let dragStart = { x: 0, y: 0 };
+        let resizeHandle = null;
+        let isPanning = false;
+
+        // Initialize
+        window.onload = function() {
+            canvas = document.getElementById('canvas');
+            ctx = canvas.getContext('2d');
+            
+            setupCanvas();
+            setupClassSelector();
+            setupEventListeners();
+            setupClassFilterGrid();
+            updateUI();
+            updateDatabaseStatus();
+        };
+
+        // Image Cache Management (LRU)
+        class ImageCache {
+            constructor(maxSize = 50) {
+                this.maxSize = maxSize;
+                this.cache = new Map();
+            }
+
+            get(key) {
+                if (this.cache.has(key)) {
+                    const value = this.cache.get(key);
+                    this.cache.delete(key);
+                    this.cache.set(key, value);
+                    return value;
+                }
+                return null;
+            }
+
+            set(key, value) {
+                if (this.cache.has(key)) {
+                    this.cache.delete(key);
+                } else if (this.cache.size >= this.maxSize) {
+                    const firstKey = this.cache.keys().next().value;
+                    this.cache.delete(firstKey);
+                }
+                this.cache.set(key, value);
+            }
+
+            clear() {
+                this.cache.clear();
+            }
+
+            size() {
+                return this.cache.size;
+            }
+        }
+
+        imageCache = new ImageCache(50);
+
+        // Download menu functionality
+        function toggleDownloadMenu() {
+            const menu = document.getElementById('downloadMenu');
+            menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
+        }
+
+        // Close dropdown when clicking outside
+        document.addEventListener('click', function(e) {
+            const dropdown = document.querySelector('.dropdown');
+            const menu = document.getElementById('downloadMenu');
+            if (dropdown && !dropdown.contains(e.target)) {
+                menu.style.display = 'none';
+            }
+        });
+
+        async function downloadLabels(scope = 'all') {
+            if (imageMetadata.length === 0) {
+                alert('No images loaded');
+                return;
+            }
+            
+            // Hide the dropdown menu
+            document.getElementById('downloadMenu').style.display = 'none';
+            
+            saveCurrentLabels();
+            
+            let indicesToDownload = [];
+            let filenameSuffix = '';
+            
+            // Determine which images to include based on scope
+            switch (scope) {
+                case 'all':
+                    indicesToDownload = Array.from({length: imageMetadata.length}, (_, i) => i);
+                    filenameSuffix = 'all_labels';
+                    break;
+                case 'filtered':
+                    if (isFiltered) {
+                        indicesToDownload = [...currentFilteredIndices];
+                        filenameSuffix = 'filtered_labels';
+                    } else {
+                        indicesToDownload = Array.from({length: imageMetadata.length}, (_, i) => i);
+                        filenameSuffix = 'all_labels';
+                    }
+                    break;
+                case 'current':
+                    indicesToDownload = [currentImageIndex];
+                    filenameSuffix = `current_${imageMetadata[currentImageIndex].name.replace(/\.[^/.]+$/, '')}_label`;
+                    break;
+                default:
+                    alert('Invalid download scope');
+                    return;
+            }
+            
+            if (indicesToDownload.length === 0) {
+                alert('No images to download labels for');
+                return;
+            }
+            
+            // Show confirmation for large downloads
+            if (indicesToDownload.length > 100) {
+                const confirmed = confirm(`This will download ${indicesToDownload.length} label files. Continue?`);
+                if (!confirmed) return;
+            }
+            
+            showLoading("Preparing Download...", `Creating ${indicesToDownload.length} label files...`);
+            
+            const zip = new JSZip();
+            const batchSize = 100;
+            let processedCount = 0;
+            
+            for (let i = 0; i < indicesToDownload.length; i += batchSize) {
+                const batchEnd = Math.min(i + batchSize, indicesToDownload.length);
+                
+                if (!updateLoading((processedCount / indicesToDownload.length) * 100, 
+                    `Processing ${processedCount + 1}-${processedCount + (batchEnd - i)}/${indicesToDownload.length} labels...`)) {
+                    return;
+                }
+                
+                for (let j = i; j < batchEnd; j++) {
+                    const imageIndex = indicesToDownload[j];
+                    const imageLabels = labels[imageIndex] || [];
+                    const imageName = imageMetadata[imageIndex].name;
+                    const baseName = imageName.replace(/\.[^/.]+$/, '');
+                    
+                    const labelContent = imageLabels.map(box => 
+                        `${box.cls} ${box.xc.toFixed(6)} ${box.yc.toFixed(6)} ${box.w.toFixed(6)} ${box.h.toFixed(6)}`
+                    ).join('\n');
+                    
+                    zip.file(`${baseName}.txt`, labelContent);
+                    processedCount++;
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 1));
+            }
+            
+            updateLoading(100, "Generating ZIP file...");
+            
+            try {
+                const content = await zip.generateAsync({ 
+                    type: 'blob',
+                    compression: 'DEFLATE',
+                    compressionOptions: { level: 6 }
+                });
+                
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = `${filenameSuffix}.zip`;
+                link.click();
+                
+                hideLoading();
+                
+                // Show summary
+                const summary = getScopeDescription(scope, indicesToDownload.length);
+                alert(`Successfully downloaded ${indicesToDownload.length} label files!\n\n${summary}`);
+                
+            } catch (e) {
+                hideLoading();
+                alert('Failed to create ZIP file. Try downloading smaller batches.');
+            }
+        }
+
+        function getScopeDescription(scope, count) {
+            switch (scope) {
+                case 'all':
+                    return `Downloaded all ${count} labels from the dataset.`;
+                case 'filtered':
+                    if (isFiltered) {
+                        const activeFilters = [];
+                        const statusFilter = document.getElementById('filterStatus').value;
+                        const classFilter = document.getElementById('filterClass').value;
+                        
+                        if (statusFilter) activeFilters.push(statusFilter);
+                        if (classFilter !== '') activeFilters.push(CLASS_NAMES[parseInt(classFilter)]);
+                        
+                        const multiClassFilters = Object.entries(classFilterState).filter(([_, state]) => state !== null);
+                        if (multiClassFilters.length > 0) {
+                            const included = multiClassFilters.filter(([_, state]) => state === 'include').length;
+                            const excluded = multiClassFilters.filter(([_, state]) => state === 'exclude').length;
+                            activeFilters.push(`${included} included, ${excluded} excluded classes`);
+                        }
+                        
+                        return `Downloaded ${count} labels matching filters: ${activeFilters.join(', ')}`;
+                    } else {
+                        return `Downloaded all ${count} labels (no filters active).`;
+                    }
+                case 'current':
+                    const currentImage = imageMetadata[currentImageIndex];
+                    const boxCount = labels[currentImageIndex]?.length || 0;
+                    return `Downloaded label for current image: ${currentImage.name} (${boxCount} boxes)`;
+                default:
+                    return `Downloaded ${count} labels.`;
+            }
+        }
+
+        // Label Database Management
+        function buildLabelDatabase() {
+            console.log('Building label database...');
+            const startTime = performance.now();
+            
+            // Reset database
+            labelDatabase.imageIndex = [];
+            labelDatabase.classIndex = {};
+            labelDatabase.statusIndex.labeled.clear();
+            labelDatabase.statusIndex.unlabeled.clear();
+            
+            // Initialize class index
+            CLASS_NAMES.forEach((_, classId) => {
+                labelDatabase.classIndex[classId] = new Set();
+            });
+            
+            // Build database
+            for (let imageIdx = 0; imageIdx < imageMetadata.length; imageIdx++) {
+                const imageLabels = labels[imageIdx] || [];
+                const hasLabels = imageLabels.length > 0;
+                const classes = new Set();
+                
+                // Extract classes for this image
+                imageLabels.forEach(box => {
+                    classes.add(box.cls);
+                    labelDatabase.classIndex[box.cls].add(imageIdx);
+                });
+                
+                // Store image metadata
+                labelDatabase.imageIndex[imageIdx] = {
+                    hasLabels,
+                    classes,
+                    boxCount: imageLabels.length,
+                    lastModified: Date.now()
+                };
+                
+                // Update status index
+                if (hasLabels) {
+                    labelDatabase.statusIndex.labeled.add(imageIdx);
+                } else {
+                    labelDatabase.statusIndex.unlabeled.add(imageIdx);
+                }
+            }
+            
+            labelDatabase.isBuilt = true;
+            labelDatabase.lastUpdate = Date.now();
+            
+            // Clear filter cache since database changed
+            filterCache.clear();
+            
+            const endTime = performance.now();
+            console.log(`Database built in ${Math.round(endTime - startTime)}ms`);
+            console.log('Database stats:', {
+                images: labelDatabase.imageIndex.length,
+                labeled: labelDatabase.statusIndex.labeled.size,
+                unlabeled: labelDatabase.statusIndex.unlabeled.size,
+                classDistribution: Object.fromEntries(
+                    Object.entries(labelDatabase.classIndex).map(([cls, set]) => [cls, set.size])
+                )
+            });
+            
+            updateDatabaseStatus();
+            updateFilterStats();
+        }
+
+        function updateImageInDatabase(imageIdx) {
+            if (!labelDatabase.isBuilt || imageIdx >= labelDatabase.imageIndex.length) return;
+            
+            const imageLabels = labels[imageIdx] || [];
+            const hasLabels = imageLabels.length > 0;
+            const newClasses = new Set();
+            const oldMetadata = labelDatabase.imageIndex[imageIdx];
+            
+            // Remove old class associations
+            if (oldMetadata && oldMetadata.classes) {
+                oldMetadata.classes.forEach(cls => {
+                    labelDatabase.classIndex[cls].delete(imageIdx);
+                });
+            }
+            
+            // Add new class associations
+            imageLabels.forEach(box => {
+                newClasses.add(box.cls);
+                if (!labelDatabase.classIndex[box.cls]) {
+                    labelDatabase.classIndex[box.cls] = new Set();
+                }
+                labelDatabase.classIndex[box.cls].add(imageIdx);
+            });
+            
+            // Update image metadata
+            labelDatabase.imageIndex[imageIdx] = {
+                hasLabels,
+                classes: newClasses,
+                boxCount: imageLabels.length,
+                lastModified: Date.now()
+            };
+            
+            // Update status index
+            labelDatabase.statusIndex.labeled.delete(imageIdx);
+            labelDatabase.statusIndex.unlabeled.delete(imageIdx);
+            
+            if (hasLabels) {
+                labelDatabase.statusIndex.labeled.add(imageIdx);
+            } else {
+                labelDatabase.statusIndex.unlabeled.add(imageIdx);
+            }
+            
+            // Handle filter updates intelligently
+            if (isFiltered) {
+                const wasCurrentImageInFilter = currentFilteredIndices.includes(imageIdx);
+                
+                // Invalidate and reapply filters
+                invalidateFilterCache(imageIdx);
+                
+                // Check if current image is still in filter after update
+                const stillInFilter = currentFilteredIndices.includes(imageIdx);
+                
+                // If current image was filtered out, handle gracefully
+                if (wasCurrentImageInFilter && !stillInFilter && imageIdx === currentImageIndex) {
+                    handleCurrentImageFilteredOut();
+                }
+            }
+            
+            updateFilterStats();
+        }
+
+        function handleCurrentImageFilteredOut() {
+            console.log('Current image no longer matches filter - staying on current image');
+            
+            // Update UI to show the image is filtered out but keep it visible
+            updateUI(); // This will show the filtered-out status
+            
+            // Show a subtle notification
+            showFilteredOutNotification();
+        }
+
+        function showFilteredOutNotification() {
+            // Create a temporary notification
+            const notification = document.createElement('div');
+            notification.style.cssText = `
+                position: fixed;
+                top: 80px;
+                right: 20px;
+                background: rgba(255, 193, 7, 0.9);
+                color: #000;
+                padding: 12px 20px;
+                border-radius: 6px;
+                font-size: 14px;
+                z-index: 1500;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                transition: opacity 0.3s;
+            `;
+            notification.textContent = '⚠️ Image no longer matches filter but staying visible';
+            document.body.appendChild(notification);
+            
+            // Remove after 3 seconds
+            setTimeout(() => {
+                notification.style.opacity = '0';
+                setTimeout(() => {
+                    document.body.removeChild(notification);
+                }, 300);
+            }, 3000);
+        }
+
+        function invalidateFilterCache(changedImageIdx = null) {
+            // For now, clear all cache when any image changes
+            // Could be optimized to only clear affected filters
+            filterCache.clear();
+            
+            // Re-apply current filters if active
+            if (isFiltered) {
+                applyFilters();
+            }
+        }
+
+        function rebuildDatabase() {
+            buildLabelDatabase();
+            if (isFiltered) {
+                applyFilters();
+            }
+        }
+
+        // Enhanced Filtering Functions
+        function applyFilters() {
+            if (!labelDatabase.isBuilt) {
+                alert('Database not ready. Please wait for it to build.');
+                return;
+            }
+            
+            const startTime = performance.now();
+            
+            // Get filter criteria
+            const statusFilter = document.getElementById('filterStatus').value;
+            const classFilter = document.getElementById('filterClass').value;
+            const operator = document.getElementById('filterOperator').value;
+            
+            // Build filter key for caching
+            const multiClassFilters = Object.entries(classFilterState)
+                .filter(([_, state]) => state !== null)
+                .map(([cls, state]) => `${cls}:${state}`)
+                .join(',');
+            
+            const filterKey = `status:${statusFilter}|class:${classFilter}|multi:${multiClassFilters}|op:${operator}`;
+            
+            // Check cache first
+            if (filterCache.has(filterKey)) {
+                currentFilteredIndices = filterCache.get(filterKey);
+                isFiltered = currentFilteredIndices.length < imageMetadata.length;
+                updateFilterResults();
+                updateUI();
+                console.log(`Filter applied from cache in ${performance.now() - startTime}ms`);
+                return;
+            }
+            
+            // Start with all images
+            let resultSet = new Set(Array.from({length: imageMetadata.length}, (_, i) => i));
+            
+            // Apply status filter
+            if (statusFilter) {
+                if (operator === 'AND') {
+                    resultSet = intersectSets(resultSet, labelDatabase.statusIndex[statusFilter]);
+                } else { // OR
+                    resultSet = unionSets(resultSet, labelDatabase.statusIndex[statusFilter]);
+                }
+            }
+            
+            // Apply single class filter
+            if (classFilter !== '') {
+                const classId = parseInt(classFilter);
+                if (operator === 'AND' || !statusFilter) {
+                    resultSet = intersectSets(resultSet, labelDatabase.classIndex[classId]);
+                } else { // OR
+                    resultSet = unionSets(resultSet, labelDatabase.classIndex[classId]);
+                }
+            }
+            
+            // Apply multi-class filters
+            const includeClasses = Object.entries(classFilterState)
+                .filter(([_, state]) => state === 'include')
+                .map(([cls, _]) => parseInt(cls));
+                
+            const excludeClasses = Object.entries(classFilterState)
+                .filter(([_, state]) => state === 'exclude')
+                .map(([cls, _]) => parseInt(cls));
+            
+            if (includeClasses.length > 0) {
+                // Images must contain at least one included class
+                const includeSet = new Set();
+                includeClasses.forEach(cls => {
+                    labelDatabase.classIndex[cls].forEach(idx => includeSet.add(idx));
+                });
+                resultSet = intersectSets(resultSet, includeSet);
+            }
+            
+            if (excludeClasses.length > 0) {
+                // Images must NOT contain any excluded class
+                const excludeSet = new Set();
+                excludeClasses.forEach(cls => {
+                    labelDatabase.classIndex[cls].forEach(idx => excludeSet.add(idx));
+                });
+                resultSet = differenceSets(resultSet, excludeSet);
+            }
+            
+            // Convert to sorted array
+            currentFilteredIndices = Array.from(resultSet).sort((a, b) => a - b);
+            
+            // Cache result
+            filterCache.set(filterKey, currentFilteredIndices);
+            
+            // Update state
+            isFiltered = currentFilteredIndices.length < imageMetadata.length;
+            
+            const endTime = performance.now();
+            console.log(`Filter applied in ${Math.round(endTime - startTime)}ms, found ${currentFilteredIndices.length} images`);
+            
+            // Update current image if it's filtered out
+            if (isFiltered && !currentFilteredIndices.includes(currentImageIndex)) {
+                if (currentFilteredIndices.length > 0) {
+                    currentImageIndex = currentFilteredIndices[0];
+                    loadCurrentImage();
+                } else {
+                    alert('No images match the current filters.');
+                    clearFilters();
+                    return;
+                }
+            }
+            
+            updateFilterResults();
+            updateUI();
+            updateQuickNavigation();
+        }
+
+        function clearFilters() {
+            // Reset all filter controls
+            document.getElementById('filterStatus').value = '';
+            document.getElementById('filterClass').value = '';
+            document.getElementById('filterOperator').value = 'AND';
+            
+            // Clear multi-class filters
+            classFilterState = {};
+            updateClassFilterGrid();
+            
+            // Reset filter state
+            currentFilteredIndices = [];
+            isFiltered = false;
+            
+            updateFilterResults();
+            updateUI();
+            updateQuickNavigation();
+        }
+
+        // Set operations
+        function intersectSets(setA, setB) {
+            const result = new Set();
+            for (const item of setA) {
+                if (setB.has(item)) {
+                    result.add(item);
+                }
+            }
+            return result;
+        }
+
+        function unionSets(setA, setB, target = null) {
+            const result = target || new Set(setA);
+            for (const item of setB) {
+                result.add(item);
+            }
+            return result;
+        }
+
+        function differenceSets(setA, setB) {
+            const result = new Set();
+            for (const item of setA) {
+                if (!setB.has(item)) {
+                    result.add(item);
+                }
+            }
+            return result;
+        }
+
+        // Multi-class filter UI
+        function setupClassFilterGrid() {
+            const grid = document.getElementById('classFilterGrid');
+            grid.innerHTML = '';
+            
+            CLASS_NAMES.forEach((className, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'class-filter-btn';
+                btn.textContent = `${index}`;
+                btn.title = className;
+                btn.onclick = (e) => toggleClassFilter(index, e.shiftKey);
+                grid.appendChild(btn);
+            });
+            
+            updateClassFilterGrid();
+        }
+
+        function toggleClassFilter(classId, isExclude = false) {
+            const currentState = classFilterState[classId] || null;
+            
+            if (isExclude) {
+                // Shift+click for exclude
+                classFilterState[classId] = currentState === 'exclude' ? null : 'exclude';
+            } else {
+                // Normal click for include
+                classFilterState[classId] = currentState === 'include' ? null : 'include';
+            }
+            
+            updateClassFilterGrid();
+            
+            // Auto-apply filters if any are active
+            if (Object.values(classFilterState).some(state => state !== null)) {
+                applyFilters();
+            } else if (isFiltered) {
+                applyFilters(); // Re-apply other filters
+            }
+        }
+
+        function updateClassFilterGrid() {
+            const buttons = document.querySelectorAll('.class-filter-btn');
+            buttons.forEach((btn, index) => {
+                const state = classFilterState[index] || null;
+                btn.className = 'class-filter-btn';
+                
+                if (state === 'include') {
+                    btn.classList.add('included');
+                } else if (state === 'exclude') {
+                    btn.classList.add('excluded');
+                }
+            });
+        }
+
+        // Navigation with filtered results
+        function getValidIndices() {
+            // If filtered and current image is not in filter, create a special list that includes current image
+            if (isFiltered) {
+                if (!currentFilteredIndices.includes(currentImageIndex)) {
+                    // Current image is filtered out but we want to stay on it
+                    // Return the filtered list but ensure navigation still works
+                    return currentFilteredIndices;
+                }
+                return currentFilteredIndices;
+            }
+            return Array.from({length: imageMetadata.length}, (_, i) => i);
+        }
+
+        function getCurrentImageStatus() {
+            if (!isFiltered) {
+                return 'normal';
+            }
+            
+            if (currentFilteredIndices.includes(currentImageIndex)) {
+                return 'filtered-in';
+            } else {
+                return 'filtered-out';
+            }
+        }
+
+        async function previousImage() {
+            saveCurrentLabels();
+            updateImageInDatabase(currentImageIndex); // Always update database on navigation
+            
+            console.log(`🔄 Navigating from image ${currentImageIndex} (${imageMetadata[currentImageIndex]?.name})`);
+            
+            const imageStatus = getCurrentImageStatus();
+            
+            if (isFiltered && imageStatus === 'filtered-out') {
+                // Navigate to previous image that matches the filter
+                const prevFilteredIndex = currentFilteredIndices
+                    .filter(idx => idx < currentImageIndex)
+                    .pop(); // Get the largest index that's smaller than current
+                
+                if (prevFilteredIndex !== undefined) {
+                    currentImageIndex = prevFilteredIndex;
+                    console.log(`🎯 Navigated to previous filtered image ${currentImageIndex} (${imageMetadata[currentImageIndex]?.name})`);
+                    await loadCurrentImage();
+                    updateUI();
+                }
+            } else {
+                // Normal navigation
+                const validIndices = getValidIndices();
+                const currentPos = validIndices.indexOf(currentImageIndex);
+                if (currentPos > 0) {
+                    currentImageIndex = validIndices[currentPos - 1];
+                    console.log(`⬅️ Navigated to previous image ${currentImageIndex} (${imageMetadata[currentImageIndex]?.name})`);
+                    await loadCurrentImage();
+                    updateUI();
+                }
+            }
+        }
+
+        async function nextImage() {
+            saveCurrentLabels();
+            updateImageInDatabase(currentImageIndex); // Always update database on navigation
+            
+            console.log(`🔄 Navigating from image ${currentImageIndex} (${imageMetadata[currentImageIndex]?.name})`);
+            
+            const imageStatus = getCurrentImageStatus();
+            
+            if (isFiltered && imageStatus === 'filtered-out') {
+                // Navigate to next image that matches the filter
+                const nextFilteredIndex = currentFilteredIndices
+                    .find(idx => idx > currentImageIndex);
+                
+                if (nextFilteredIndex !== undefined) {
+                    currentImageIndex = nextFilteredIndex;
+                    console.log(`🎯 Navigated to next filtered image ${currentImageIndex} (${imageMetadata[currentImageIndex]?.name})`);
+                    await loadCurrentImage();
+                    updateUI();
+                }
+            } else {
+                // Normal navigation
+                const validIndices = getValidIndices();
+                const currentPos = validIndices.indexOf(currentImageIndex);
+                if (currentPos < validIndices.length - 1) {
+                    currentImageIndex = validIndices[currentPos + 1];
+                    console.log(`➡️ Navigated to next image ${currentImageIndex} (${imageMetadata[currentImageIndex]?.name})`);
+                    await loadCurrentImage();
+                    updateUI();
+                }
+            }
+        }
+
+        async function jumpToIndex(relativeIndex) {
+            const validIndices = getValidIndices();
+            if (relativeIndex >= 0 && relativeIndex < validIndices.length) {
+                saveCurrentLabels();
+                updateImageInDatabase(currentImageIndex); // Always update database on navigation
+                currentImageIndex = validIndices[relativeIndex];
+                await loadCurrentImage();
+                updateUI();
+            }
+        }
+
+        function goToImage() {
+            const pageInput = document.getElementById('pageInput');
+            const pageNum = parseInt(pageInput.value);
+            const validIndices = getValidIndices();
+            
+            if (pageNum >= 1 && pageNum <= validIndices.length) {
+                jumpToIndex(pageNum - 1);
+                pageInput.value = '';
+            } else {
+                alert(`Please enter a number between 1 and ${validIndices.length}`);
+            }
+        }
+
+        function updateFilterResults() {
+            const results = document.getElementById('filterResults');
+            const validIndices = getValidIndices();
+            
+            if (isFiltered) {
+                const activeFilters = [];
+                
+                const statusFilter = document.getElementById('filterStatus').value;
+                const classFilter = document.getElementById('filterClass').value;
+                
+                if (statusFilter) activeFilters.push(statusFilter);
+                if (classFilter !== '') activeFilters.push(CLASS_NAMES[parseInt(classFilter)]);
+                
+                const multiClassFilters = Object.entries(classFilterState).filter(([_, state]) => state !== null);
+                if (multiClassFilters.length > 0) {
+                    const included = multiClassFilters.filter(([_, state]) => state === 'include').length;
+                    const excluded = multiClassFilters.filter(([_, state]) => state === 'exclude').length;
+                    activeFilters.push(`${included} included, ${excluded} excluded classes`);
+                }
+                
+                results.innerHTML = `
+                    <div style="color: #4a90e2; font-weight: bold;">
+                        Showing ${validIndices.length} of ${imageMetadata.length} images
+                    </div>
+                    <div style="margin-top: 4px;">
+                        Filters: ${activeFilters.join(', ') || 'Advanced filters'}
+                    </div>
+                `;
+            } else if (imageMetadata.length > 0) {
+                results.innerHTML = `
+                    <div style="color: #ccc;">
+                        Showing all ${imageMetadata.length} images (no filters)
+                    </div>
+                `;
+            } else {
+                results.innerHTML = '<div style="color: #ccc;">No images loaded</div>';
+            }
+        }
+
+        function updateFilterStats() {
+            const total = imageMetadata.length;
+            const labeled = labelDatabase.isBuilt ? labelDatabase.statusIndex.labeled.size : 0;
+            const showing = getValidIndices().length;
+            
+            document.getElementById('statTotal').textContent = total;
+            document.getElementById('statLabeled').textContent = labeled;
+            document.getElementById('statFiltered').textContent = showing;
+        }
+
+        function updateDatabaseStatus() {
+            const indicator = document.getElementById('dbStatusIndicator');
+            const text = document.getElementById('dbStatusText');
+            
+            if (labelDatabase.isBuilt) {
+                indicator.className = 'status-indicator status-ready';
+                text.textContent = `Ready (${imageMetadata.length} images)`;
+            } else if (imageMetadata.length > 0) {
+                indicator.className = 'status-indicator status-building';
+                text.textContent = 'Building database...';
+            } else {
+                indicator.className = 'status-indicator status-error';
+                text.textContent = 'No images loaded';
+            }
+        }
+
+        // Quick navigation for large datasets
+        function updateQuickNavigation() {
+            const quickNav = document.getElementById('quickNav');
+            quickNav.innerHTML = '';
+            
+            const validIndices = getValidIndices();
+            const total = validIndices.length;
+            
+            if (total <= 10) return;
+            
+            const jumps = [
+                { label: 'First', index: 0 },
+                { label: '10%', index: Math.floor(total * 0.1) },
+                { label: '25%', index: Math.floor(total * 0.25) },
+                { label: '50%', index: Math.floor(total * 0.5) },
+                { label: '75%', index: Math.floor(total * 0.75) },
+                { label: '90%', index: Math.floor(total * 0.9) },
+                { label: 'Last', index: total - 1 }
+            ];
+            
+            jumps.forEach(jump => {
+                const btn = document.createElement('button');
+                btn.className = 'quick-nav-btn';
+                btn.textContent = jump.label;
+                btn.onclick = () => jumpToIndex(jump.index);
+                quickNav.appendChild(btn);
+            });
+        }
+
+        function setupCanvas() {
+            canvas.width = canvas.parentElement.clientWidth;
+            canvas.height = canvas.parentElement.clientHeight;
+            
+            window.addEventListener('resize', () => {
+                canvas.width = canvas.parentElement.clientWidth;
+                canvas.height = canvas.parentElement.clientHeight;
+                draw();
+            });
+        }
+
+        function setupClassSelector() {
+            const selector = document.getElementById('classSelector');
+            const filterSelector = document.getElementById('filterClass');
+            
+            CLASS_NAMES.forEach((className, index) => {
+                // Class selector buttons
+                const btn = document.createElement('button');
+                btn.className = 'class-btn';
+                btn.textContent = `${index}: ${className}`;
+                btn.onclick = () => setCurrentClass(index);
+                selector.appendChild(btn);
+
+                // Filter dropdown
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = className;
+                filterSelector.appendChild(option);
+            });
+            updateClassSelector();
+        }
+
+        function setupEventListeners() {
+            // File uploads
+            document.getElementById('imageUpload').addEventListener('change', handleImageUpload);
+            document.getElementById('labelUpload').addEventListener('change', handleLabelUpload);
+
+            // Canvas events
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mousemove', onMouseMove);
+            canvas.addEventListener('mouseup', onMouseUp);
+            canvas.addEventListener('wheel', onWheel);
+            canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+            // Keyboard events
+            document.addEventListener('keydown', onKeyDown);
+
+            // Drag and drop
+            const dragOverlay = document.getElementById('dragOverlay');
+            document.addEventListener('dragover', e => {
+                e.preventDefault();
+                dragOverlay.classList.add('active');
+            });
+            document.addEventListener('dragleave', e => {
+                if (!e.relatedTarget) {
+                    dragOverlay.classList.remove('active');
+                }
+            });
+            document.addEventListener('drop', e => {
+                e.preventDefault();
+                dragOverlay.classList.remove('active');
+                handleFileDrop(e);
+            });
+
+            // Filter change listeners
+            document.getElementById('filterStatus').addEventListener('change', () => {
+                if (labelDatabase.isBuilt) applyFilters();
+            });
+            document.getElementById('filterClass').addEventListener('change', () => {
+                if (labelDatabase.isBuilt) applyFilters();
+            });
+            document.getElementById('filterOperator').addEventListener('change', () => {
+                if (labelDatabase.isBuilt) applyFilters();
+            });
+        }
+
+        function showLoading(title = "Loading...", status = "Processing...") {
+            const overlay = document.getElementById('loadingOverlay');
+            document.getElementById('loadingTitle').textContent = title;
+            document.getElementById('loadingStatus').textContent = status;
+            document.getElementById('loadingProgress').style.width = '0%';
+            overlay.style.display = 'flex';
+            isLoading = true;
+            loadingCancelled = false;
+        }
+
+        function updateLoading(progress, status) {
+            if (loadingCancelled) return false;
+            document.getElementById('loadingProgress').style.width = `${progress}%`;
+            document.getElementById('loadingStatus').textContent = status;
+            return true;
+        }
+
+        function hideLoading() {
+            document.getElementById('loadingOverlay').style.display = 'none';
+            isLoading = false;
+            loadingCancelled = false;
+        }
+
+        function cancelLoading() {
+            loadingCancelled = true;
+            hideLoading();
+        }
+
+        // Optimized image loading
+        async function handleImageUpload(e) {
+            const files = Array.from(e.target.files);
+            await loadImagesOptimized(files);
+        }
+
+        async function loadImagesOptimized(files) {
+            showLoading("Analyzing Images...", "Preparing image metadata...");
+            
+            // Reset data
+            imageMetadata = [];
+            imageCache.clear();
+            labels = [];
+            currentImageIndex = 0;
+            currentFilteredIndices = [];
+            isFiltered = false;
+            labelDatabase.isBuilt = false;
+            
+            console.log(`Processing ${files.length} image files`);
+            
+            // Create lightweight metadata first
+            for (let i = 0; i < files.length; i++) {
+                if (!updateLoading((i / files.length) * 50, `Analyzing ${i + 1}/${files.length} files...`)) {
+                    return;
+                }
+                
+                const file = files[i];
+                imageMetadata.push({
+                    name: file.name,
+                    file: file,
+                    size: file.size,
+                    loaded: false,
+                    img: null
+                });
+                
+                if (i % 50 === 0) {
+                    await new Promise(resolve => setTimeout(resolve, 1));
+                }
+            }
+            
+            // Sort by name
+            imageMetadata.sort((a, b) => a.name.localeCompare(b.name));
+            
+            // Initialize labels array
+            labels = new Array(imageMetadata.length).fill(null).map(() => []);
+            
+            updateLoading(75, "Building label database...");
+            
+            // Build initial database
+            buildLabelDatabase();
+            
+            // Load first image
+            await loadImageAtIndex(0);
+            
+            updateLoading(100, "Complete!");
+            
+            setTimeout(() => {
+                hideLoading();
+                updateUI();
+                updateQuickNavigation();
+                updateFilterStats();
+            }, 500);
+        }
+
+        // Load specific image on demand
+        async function loadImageAtIndex(index) {
+            if (index < 0 || index >= imageMetadata.length) return null;
+            
+            const metadata = imageMetadata[index];
+            
+            // Check cache first
+            let cachedImg = imageCache.get(index);
+            if (cachedImg) {
+                metadata.img = cachedImg;
+                metadata.loaded = true;
+                return cachedImg;
+            }
+            
+            // Load from file
+            return new Promise((resolve) => {
+                const img = new Image();
+                const reader = new FileReader();
+                
+                reader.onload = e => {
+                    img.onload = () => {
+                        metadata.img = img;
+                        metadata.loaded = true;
+                        imageCache.set(index, img);
+                        document.getElementById('loadedImages').textContent = imageCache.size();
+                        resolve(img);
+                    };
+                    img.onerror = () => {
+                        console.error(`Failed to load image: ${metadata.name}`);
+                        resolve(null);
+                    };
+                    img.src = e.target.result;
+                };
+                
+                reader.onerror = () => {
+                    console.error(`Failed to read file: ${metadata.name}`);
+                    resolve(null);
+                };
+                
+                reader.readAsDataURL(metadata.file);
+            });
+        }
+
+        // Enhanced label loading
+        async function handleLabelUpload(e) {
+            const files = Array.from(e.target.files);
+            await loadLabelsOptimized(files);
+        }
+
+        async function loadLabelsOptimized(files) {
+            showLoading("Loading Labels...", "Processing label files...");
+            
+            // Clear all existing labels first
+            labels = new Array(imageMetadata.length).fill(null).map(() => []);
+            
+            // Reset label metadata
+            imageMetadata.forEach(img => {
+                img.labelFile = null;
+                img.matchStrategy = null;
+                img.labelLoadTime = null;
+            });
+            
+            console.log('\n=== STARTING LABEL LOADING ===');
+            console.log(`Processing ${files.length} label files...`);
+            
+            let labelsLoaded = 0;
+            const matchResults = [];
+            
+            // Process each file and collect results
+            for (let i = 0; i < files.length; i++) {
+                if (!updateLoading((i / files.length) * 80, 
+                    `Processing ${files[i].name}...`)) {
+                    return;
+                }
+                
+                const result = await processLabelFileSimple(files[i]);
+                matchResults.push(result);
+                if (result.success) {
+                    labelsLoaded++;
+                }
+            }
+            
+            updateLoading(90, "Rebuilding database...");
+            
+            // Rebuild database with new labels
+            buildLabelDatabase();
+            
+            // Update current image display
+            await loadCurrentImage();
+            
+            updateLoading(100, "Complete!");
+            
+            setTimeout(() => {
+                hideLoading();
+                updateUI();
+                updateFilterStats();
+                
+                // Show results
+                console.log('\n=== LABEL LOADING RESULTS ===');
+                console.log(`Successfully loaded: ${labelsLoaded}/${files.length} label files`);
+                
+                const failed = matchResults.filter(r => !r.success);
+                if (failed.length > 0) {
+                    console.log('Failed to match:');
+                    failed.forEach(f => console.log(`  - ${f.fileName}: ${f.reason}`));
+                }
+                
+                alert(`Labels loaded: ${labelsLoaded} of ${files.length} files matched\n\nCheck console (F12) for details.`);
+            }, 500);
+        }
+
+        async function processLabelFileSimple(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    try {
+                        const content = e.target.result;
+                        const fileName = file.name;
+                        const baseName = fileName.replace('.txt', '');
+                        
+                        console.log(`\nProcessing: ${fileName} (base: ${baseName})`);
+                        
+                        // Find exact matching image
+                        let imageIndex = -1;
+                        let matchType = '';
+                        
+                        // Strategy 1: Exact filename match
+                        for (let i = 0; i < imageMetadata.length; i++) {
+                            const imgBaseName = imageMetadata[i].name.replace(/\.[^/.]+$/, '');
+                            if (imgBaseName === baseName) {
+                                imageIndex = i;
+                                matchType = 'exact';
+                                break;
+                            }
+                        }
+                        
+                        // Strategy 2: Case-insensitive match
+                        if (imageIndex === -1) {
+                            for (let i = 0; i < imageMetadata.length; i++) {
+                                const imgBaseName = imageMetadata[i].name.replace(/\.[^/.]+$/, '').toLowerCase();
+                                if (imgBaseName === baseName.toLowerCase()) {
+                                    imageIndex = i;
+                                    matchType = 'case-insensitive';
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (imageIndex === -1) {
+                            console.log(`❌ No match found for ${fileName}`);
+                            resolve({
+                                success: false,
+                                fileName: fileName,
+                                reason: 'No matching image found'
+                            });
+                            return;
+                        }
+                        
+                        const matchedImage = imageMetadata[imageIndex];
+                        console.log(`✅ Matched: ${fileName} → ${matchedImage.name} (index ${imageIndex}, ${matchType})`);
+                        
+                        // Parse labels
+                        const parsedLabels = parseLabelFile(content);
+                        console.log(`   Parsed ${parsedLabels.length} labels`);
+                        
+                        // Store labels
+                        labels[imageIndex] = parsedLabels;
+                        matchedImage.labelFile = fileName;
+                        matchedImage.matchStrategy = matchType;
+                        matchedImage.labelLoadTime = Date.now();
+                        
+                        resolve({
+                            success: true,
+                            fileName: fileName,
+                            imageIndex: imageIndex,
+                            imageName: matchedImage.name,
+                            labelCount: parsedLabels.length
+                        });
+                        
+                    } catch (error) {
+                        console.error(`Error processing ${file.name}:`, error);
+                        resolve({
+                            success: false,
+                            fileName: file.name,
+                            reason: `Parse error: ${error.message}`
+                        });
+                    }
+                };
+                
+                reader.onerror = () => {
+                    resolve({
+                        success: false,
+                        fileName: file.name,
+                        reason: 'File read error'
+                    });
+                };
+                
+                reader.readAsText(file);
+            });
+        }
+
+        function parseLabelFile(content) {
+            const lines = content.trim().split('\n').filter(line => line.trim());
+            
+            return lines.map(line => {
+                const parts = line.trim().split(/\s+/);
+                if (parts.length !== 5) return null;
+                
+                const [cls, xc, yc, w, h] = parts.map(Number);
+                
+                if (isNaN(cls) || isNaN(xc) || isNaN(yc) || isNaN(w) || isNaN(h)) {
+                    return null;
+                }
+                
+                if (xc < 0 || xc > 1 || yc < 0 || yc > 1 || w <= 0 || w > 1 || h <= 0 || h > 1) {
+                    return null;
+                }
+                
+                return { cls, xc, yc, w, h };
+            }).filter(box => box !== null);
+        }
+
+        async function loadCurrentImage() {
+            if (imageMetadata.length === 0) return;
+            
+            const currentMetadata = imageMetadata[currentImageIndex];
+            
+            console.log(`\n=== Loading Image ${currentImageIndex} ===`);
+            console.log(`Image name: ${currentMetadata.name}`);
+            console.log(`Label file: ${currentMetadata.labelFile || 'No label file matched'}`);
+            
+            // CRITICAL FIX: Always clear boxes first, then load fresh
+            console.log(`🧹 Clearing previous boxes (had ${boxes.length} boxes)`);
+            boxes = []; // Clear any previous boxes
+            selectedBoxIndex = -1;
+            
+            // Load image if not already loaded
+            if (!currentMetadata.loaded) {
+                await loadImageAtIndex(currentImageIndex);
+            }
+            
+            // Load boxes for current image - FRESH from labels array
+            const imageLabels = labels[currentImageIndex] || [];
+            boxes = [...imageLabels]; // Create fresh copy
+            
+            console.log(`📦 Loaded ${boxes.length} fresh boxes for ${currentMetadata.name}:`);
+            boxes.forEach((box, idx) => {
+                console.log(`  Box ${idx}: class=${box.cls} (${CLASS_NAMES[box.cls]}) center=(${box.xc.toFixed(3)}, ${box.yc.toFixed(3)})`);
+            });
+            
+            // Force UI updates
+            fitToScreen();
+            updateBoxList(); // Update the box list UI
+            draw(); // Redraw canvas with fresh boxes
+        }
+
+        function setCurrentClass(index) {
+            currentClass = index;
+            updateClassSelector();
+        }
+
+        function updateClassSelector() {
+            const buttons = document.querySelectorAll('.class-btn');
+            buttons.forEach((btn, index) => {
+                btn.classList.toggle('active', index === currentClass);
+            });
+        }
+
+        // Enhanced keyboard shortcuts
+        async function onKeyDown(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
+                return;
+            }
+
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedBoxIndex !== -1) {
+                    saveState();
+                    boxes.splice(selectedBoxIndex, 1);
+                    selectedBoxIndex = -1;
+                    updateBoxList();
+                    draw();
+                    
+                    // Update database for current image
+                    saveCurrentLabels();
+                    updateImageInDatabase(currentImageIndex);
+                }
+            } else if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                e.preventDefault();
+                await previousImage();
+            } else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                e.preventDefault();
+                await nextImage();
+            } else if (e.key >= '0' && e.key <= '9') {
+                const classIndex = parseInt(e.key);
+                if (classIndex < CLASS_NAMES.length) {
+                    if (selectedBoxIndex !== -1) {
+                        boxes[selectedBoxIndex].cls = classIndex;
+                        updateBoxList();
+                        draw();
+                        
+                        // Update database for current image
+                        saveCurrentLabels();
+                        updateImageInDatabase(currentImageIndex);
+                    } else {
+                        setCurrentClass(classIndex);
+                    }
+                }
+            } else if (e.key === 'v' || e.key === 'V') {
+                toggleBoxes();
+            } else if (e.key === 'f' || e.key === 'F') {
+                fitToScreen();
+            } else if (e.key === 'r' || e.key === 'R') {
+                resetZoom();
+            } else if (e.key === '+' || e.key === '=') {
+                zoomIn();
+            } else if (e.key === '-') {
+                zoomOut();
+            } else if (e.ctrlKey && e.key === 'z') {
+                e.preventDefault();
+                undo();
+            } else if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                saveProject();
+            }
+        }
+
+        // Canvas interaction functions (optimized but similar to original)
+        function getCanvasCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        }
+
+        function screenToImage(screenX, screenY) {
+            const currentMetadata = imageMetadata[currentImageIndex];
+            if (!currentMetadata?.img) return { x: 0, y: 0 };
+            
+            const img = currentMetadata.img;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const scaledWidth = img.width * zoom;
+            const scaledHeight = img.height * zoom;
+            
+            const imageScreenX = centerX + panX - scaledWidth / 2;
+            const imageScreenY = centerY + panY - scaledHeight / 2;
+            
+            const imageX = (screenX - imageScreenX) / zoom;
+            const imageY = (screenY - imageScreenY) / zoom;
+            
+            return { x: imageX, y: imageY };
+        }
+
+        function imageToScreen(imageX, imageY) {
+            const currentMetadata = imageMetadata[currentImageIndex];
+            if (!currentMetadata?.img) return { x: 0, y: 0 };
+            
+            const img = currentMetadata.img;
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const scaledWidth = img.width * zoom;
+            const scaledHeight = img.height * zoom;
+            
+            const imageScreenX = centerX + panX - scaledWidth / 2;
+            const imageScreenY = centerY + panY - scaledHeight / 2;
+            
+            const screenX = imageScreenX + (imageX * zoom);
+            const screenY = imageScreenY + (imageY * zoom);
+            
+            return { x: screenX, y: screenY };
+        }
+
+        function normalizedToImage(box) {
+            const currentMetadata = imageMetadata[currentImageIndex];
+            if (!currentMetadata?.img) return { x1: 0, y1: 0, x2: 0, y2: 0 };
+            
+            const img = currentMetadata.img;
+            const centerX = box.xc * img.width;
+            const centerY = box.yc * img.height;
+            const width = box.w * img.width;
+            const height = box.h * img.height;
+            
+            return {
+                x1: centerX - width / 2,
+                y1: centerY - height / 2,
+                x2: centerX + width / 2,
+                y2: centerY + height / 2
+            };
+        }
+
+        function imageToNormalized(x1, y1, x2, y2) {
+            const currentMetadata = imageMetadata[currentImageIndex];
+            if (!currentMetadata?.img) return { cls: 0, xc: 0, yc: 0, w: 0, h: 0 };
+            
+            const img = currentMetadata.img;
+            const centerX = (x1 + x2) / 2 / img.width;
+            const centerY = (y1 + y2) / 2 / img.height;
+            const width = Math.abs(x2 - x1) / img.width;
+            const height = Math.abs(y2 - y1) / img.height;
+            
+            return { cls: currentClass, xc: centerX, yc: centerY, w: width, h: height };
+        }
+
+        function getBoxAtPoint(x, y) {
+            const imagePos = screenToImage(x, y);
+            
+            for (let i = boxes.length - 1; i >= 0; i--) {
+                const box = normalizedToImage(boxes[i]);
+                if (imagePos.x >= box.x1 && imagePos.x <= box.x2 && 
+                    imagePos.y >= box.y1 && imagePos.y <= box.y2) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        function getResizeHandle(x, y, boxIndex) {
+            if (boxIndex === -1) return null;
+            
+            const box = normalizedToImage(boxes[boxIndex]);
+            const handles = [
+                { x: box.x1, y: box.y1, handle: 'nw' },
+                { x: box.x2, y: box.y1, handle: 'ne' },
+                { x: box.x1, y: box.y2, handle: 'sw' },
+                { x: box.x2, y: box.y2, handle: 'se' }
+            ];
+            
+            for (const h of handles) {
+                const screenPos = imageToScreen(h.x, h.y);
+                if (Math.abs(x - screenPos.x) <= HANDLE_SIZE && 
+                    Math.abs(y - screenPos.y) <= HANDLE_SIZE) {
+                    return h.handle;
+                }
+            }
+            return null;
+        }
+
+        function onMouseDown(e) {
+            const { x, y } = getCanvasCoordinates(e);
+            
+            isDragging = true;
+            dragStart = { x, y };
+            
+            if (e.button === 2) {
+                dragMode = 'pan';
+                isPanning = true;
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+            
+            if (selectedBoxIndex !== -1) {
+                const handle = getResizeHandle(x, y, selectedBoxIndex);
+                if (handle) {
+                    dragMode = 'resize';
+                    resizeHandle = handle;
+                    canvas.style.cursor = 'nw-resize';
+                    return;
+                }
+            }
+            
+            const boxIndex = getBoxAtPoint(x, y);
+            if (boxIndex !== -1) {
+                selectedBoxIndex = boxIndex;
+                dragMode = 'move';
+                canvas.style.cursor = 'move';
+                updateBoxList();
+                draw();
+                return;
+            }
+            
+            selectedBoxIndex = -1;
+            dragMode = 'create';
+            canvas.style.cursor = 'crosshair';
+            updateBoxList();
+        }
+
+        function onMouseMove(e) {
+            const { x, y } = getCanvasCoordinates(e);
+            
+            if (!isDragging) {
+                if (selectedBoxIndex !== -1) {
+                    const handle = getResizeHandle(x, y, selectedBoxIndex);
+                    if (handle) {
+                        canvas.style.cursor = 'nw-resize';
+                        return;
+                    }
+                }
+                
+                const boxIndex = getBoxAtPoint(x, y);
+                canvas.style.cursor = boxIndex !== -1 ? 'move' : 'crosshair';
+                return;
+            }
+            
+            const dx = x - dragStart.x;
+            const dy = y - dragStart.y;
+            
+            if (dragMode === 'pan') {
+                panX += dx;
+                panY += dy;
+                dragStart = { x, y };
+                draw();
+            } else if (dragMode === 'move' && selectedBoxIndex !== -1) {
+                const imageStart = screenToImage(dragStart.x, dragStart.y);
+                const imageCurrent = screenToImage(x, y);
+                const imageDx = imageCurrent.x - imageStart.x;
+                const imageDy = imageCurrent.y - imageStart.y;
+                
+                const currentMetadata = imageMetadata[currentImageIndex];
+                if (currentMetadata?.img) {
+                    const img = currentMetadata.img;
+                    const normalizedDx = imageDx / img.width;
+                    const normalizedDy = imageDy / img.height;
+                    
+                    boxes[selectedBoxIndex].xc += normalizedDx;
+                    boxes[selectedBoxIndex].yc += normalizedDy;
+                }
+                
+                dragStart = { x, y };
+                draw();
+            } else if (dragMode === 'resize' && selectedBoxIndex !== -1) {
+                const imagePos = screenToImage(x, y);
+                const currentMetadata = imageMetadata[currentImageIndex];
+                if (!currentMetadata?.img) return;
+                
+                const img = currentMetadata.img;
+                const box = boxes[selectedBoxIndex];
+                const currentBox = normalizedToImage(box);
+                
+                let newBox = { ...currentBox };
+                if (resizeHandle.includes('n')) newBox.y1 = imagePos.y;
+                if (resizeHandle.includes('s')) newBox.y2 = imagePos.y;
+                if (resizeHandle.includes('w')) newBox.x1 = imagePos.x;
+                if (resizeHandle.includes('e')) newBox.x2 = imagePos.x;
+                
+                const x1 = Math.min(newBox.x1, newBox.x2);
+                const y1 = Math.min(newBox.y1, newBox.y2);
+                const x2 = Math.max(newBox.x1, newBox.x2);
+                const y2 = Math.max(newBox.y1, newBox.y2);
+                
+                if (x2 - x1 > 5 && y2 - y1 > 5) {
+                    const normalized = imageToNormalized(x1, y1, x2, y2);
+                    boxes[selectedBoxIndex] = { ...normalized, cls: box.cls };
+                }
+                
+                draw();
+            } else if (dragMode === 'create') {
+                draw();
+                
+                const startPos = screenToImage(dragStart.x, dragStart.y);
+                const currentPos = screenToImage(x, y);
+                
+                const x1 = Math.min(startPos.x, currentPos.x);
+                const y1 = Math.min(startPos.y, currentPos.y);
+                const x2 = Math.max(startPos.x, currentPos.x);
+                const y2 = Math.max(startPos.y, currentPos.y);
+                
+                const screenStart = imageToScreen(x1, y1);
+                const screenEnd = imageToScreen(x2, y2);
+                
+                ctx.strokeStyle = COLORS[currentClass];
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.strokeRect(screenStart.x, screenStart.y, 
+                              screenEnd.x - screenStart.x, screenEnd.y - screenStart.y);
+                ctx.setLineDash([]);
+            }
+        }
+
+        function onMouseUp(e) {
+            if (!isDragging) return;
+            
+            const { x, y } = getCanvasCoordinates(e);
+            
+            if (dragMode === 'create') {
+                const startPos = screenToImage(dragStart.x, dragStart.y);
+                const endPos = screenToImage(x, y);
+                
+                const x1 = Math.min(startPos.x, endPos.x);
+                const y1 = Math.min(startPos.y, endPos.y);
+                const x2 = Math.max(startPos.x, endPos.x);
+                const y2 = Math.max(startPos.y, endPos.y);
+                
+                if (x2 - x1 > 5 && y2 - y1 > 5) {
+                    saveState();
+                    const newBox = imageToNormalized(x1, y1, x2, y2);
+                    boxes.push(newBox);
+                    selectedBoxIndex = boxes.length - 1;
+                    updateBoxList();
+                    
+                    // Update database for current image
+                    saveCurrentLabels();
+                    updateImageInDatabase(currentImageIndex);
+                }
+            } else if (dragMode === 'move' || dragMode === 'resize') {
+                saveState();
+                
+                // Update database for current image
+                saveCurrentLabels();
+                updateImageInDatabase(currentImageIndex);
+            }
+            
+            isDragging = false;
+            dragMode = null;
+            resizeHandle = null;
+            isPanning = false;
+            canvas.style.cursor = 'crosshair';
+            
+            draw();
+        }
+
+        function onWheel(e) {
+            e.preventDefault();
+            
+            const { x: mouseX, y: mouseY } = getCanvasCoordinates(e);
+            
+            const oldZoom = zoom;
+            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+            zoom = Math.max(0.1, Math.min(5, zoom * zoomFactor));
+            
+            const zoomChange = zoom / oldZoom;
+            panX = mouseX - (mouseX - panX) * zoomChange;
+            panY = mouseY - (mouseY - panY) * zoomChange;
+            
+            updateZoomLevel();
+            draw();
+        }
+
+        function draw() {
+            if (imageMetadata.length === 0) {
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#666';
+                ctx.font = '20px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Upload images to start editing', canvas.width / 2, canvas.height / 2);
+                return;
+            }
+            
+            const currentMetadata = imageMetadata[currentImageIndex];
+            if (!currentMetadata?.img) {
+                ctx.fillStyle = '#0a0a0a';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#666';
+                ctx.font = '16px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('Loading image...', canvas.width / 2, canvas.height / 2);
+                return;
+            }
+            
+            const img = currentMetadata.img;
+            
+            // Clear canvas
+            ctx.fillStyle = '#0a0a0a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Calculate image position and size
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const scaledWidth = img.width * zoom;
+            const scaledHeight = img.height * zoom;
+            
+            const drawX = centerX + panX - scaledWidth / 2;
+            const drawY = centerY + panY - scaledHeight / 2;
+            
+            // Draw image
+            ctx.drawImage(img, drawX, drawY, scaledWidth, scaledHeight);
+            
+            // Draw boxes if enabled
+            if (showBoxes && boxes && boxes.length > 0) {
+                boxes.forEach((box, index) => {
+                    const imageBox = normalizedToImage(box);
+                    const screenStart = imageToScreen(imageBox.x1, imageBox.y1);
+                    const screenEnd = imageToScreen(imageBox.x2, imageBox.y2);
+                    
+                    const width = screenEnd.x - screenStart.x;
+                    const height = screenEnd.y - screenStart.y;
+                    
+                    if (width < 2 || height < 2) return;
+                    
+                    const color = COLORS[box.cls] || '#00ff00';
+                    const isSelected = index === selectedBoxIndex;
+                    
+                    // Draw box outline
+                    ctx.strokeStyle = isSelected ? '#ff0000' : color;
+                    ctx.lineWidth = isSelected ? 3 : 2;
+                    ctx.setLineDash([]);
+                    
+                    ctx.strokeRect(screenStart.x, screenStart.y, width, height);
+                    
+                    // Draw class label
+                    const className = CLASS_NAMES[box.cls] || `Class ${box.cls}`;
+                    ctx.font = '14px Arial';
+                    ctx.textAlign = 'left';
+                    const textMetrics = ctx.measureText(className);
+                    const textWidth = textMetrics.width + 8;
+                    const textHeight = 20;
+                    
+                    const labelX = screenStart.x;
+                    const labelY = Math.max(screenStart.y - textHeight, 0);
+                    
+                    ctx.fillStyle = isSelected ? '#ff0000' : color;
+                    ctx.fillRect(labelX, labelY, textWidth, textHeight);
+                    
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillText(className, labelX + 4, labelY + 15);
+                    
+                    // Draw resize handles for selected box
+                    if (isSelected) {
+                        const handles = [
+                            { x: imageBox.x1, y: imageBox.y1 },
+                            { x: imageBox.x2, y: imageBox.y1 },
+                            { x: imageBox.x1, y: imageBox.y2 },
+                            { x: imageBox.x2, y: imageBox.y2 }
+                        ];
+                        
+                        handles.forEach(handle => {
+                            const screenHandle = imageToScreen(handle.x, handle.y);
+                            ctx.fillStyle = '#ffff00';
+                            ctx.fillRect(
+                                screenHandle.x - HANDLE_SIZE,
+                                screenHandle.y - HANDLE_SIZE,
+                                HANDLE_SIZE * 2,
+                                HANDLE_SIZE * 2
+                            );
+                        });
+                    }
+                });
+            }
+        }
+
+        function saveState() {
+            undoStack.push(JSON.parse(JSON.stringify(boxes)));
+            if (undoStack.length > 50) {
+                undoStack.shift();
+            }
+            document.getElementById('undoBtn').disabled = false;
+        }
+
+        function undo() {
+            if (undoStack.length > 0) {
+                boxes = undoStack.pop();
+                selectedBoxIndex = -1;
+                updateBoxList();
+                draw();
+                document.getElementById('undoBtn').disabled = undoStack.length === 0;
+                
+                // Update database for current image
+                saveCurrentLabels();
+                updateImageInDatabase(currentImageIndex);
+            }
+        }
+
+        function saveCurrentLabels() {
+            if (imageMetadata.length > 0 && currentImageIndex >= 0) {
+                labels[currentImageIndex] = [...boxes];
+            }
+        }
+
+        function fitToScreen() {
+            const currentMetadata = imageMetadata[currentImageIndex];
+            if (!currentMetadata?.img) return;
+            
+            const img = currentMetadata.img;
+            const padding = 50;
+            const availableWidth = canvas.width - padding;
+            const availableHeight = canvas.height - padding;
+            
+            const scaleX = availableWidth / img.width;
+            const scaleY = availableHeight / img.height;
+            
+            zoom = Math.min(scaleX, scaleY, 1);
+            panX = 0;
+            panY = 0;
+            
+            updateZoomLevel();
+            draw();
+        }
+
+        function zoomIn() {
+            zoom = Math.min(zoom * 1.2, 5);
+            updateZoomLevel();
+            draw();
+        }
+
+        function zoomOut() {
+            zoom = Math.max(zoom / 1.2, 0.1);
+            updateZoomLevel();
+            draw();
+        }
+
+        function resetZoom() {
+            zoom = 1;
+            panX = 0;
+            panY = 0;
+            updateZoomLevel();
+            draw();
+        }
+
+        function toggleBoxes() {
+            const checkbox = document.getElementById('showBoxes');
+            showBoxes = !showBoxes;  // Toggle the actual state
+            checkbox.checked = showBoxes;  // Update checkbox to match
+            draw();
+        }
+
+        function updateZoomLevel() {
+            document.getElementById('zoomLevel').textContent = `${Math.round(zoom * 100)}%`;
+        }
+
+        function updateUI() {
+            const imageCounter = document.getElementById('imageCounter');
+            const imageName = document.getElementById('imageName');
+            const prevBtn = document.getElementById('prevBtn');
+            const nextBtn = document.getElementById('nextBtn');
+            const pageInput = document.getElementById('pageInput');
+            const debugInfo = document.getElementById('debugInfo');
+            
+            document.getElementById('totalImages').textContent = imageMetadata.length;
+            document.getElementById('loadedImages').textContent = imageCache.size();
+            
+            if (imageMetadata.length === 0) {
+                imageCounter.textContent = '0 / 0';
+                imageName.textContent = 'No image loaded';
+                debugInfo.textContent = 'No image loaded';
+                prevBtn.disabled = true;
+                nextBtn.disabled = true;
+                pageInput.max = 0;
+                updateZoomLevel();
+                return;
+            }
+
+            const validIndices = getValidIndices();
+            const currentMetadata = imageMetadata[currentImageIndex];
+            const imageLabels = labels[currentImageIndex] || [];
+            const hasLabels = imageLabels.length > 0;
+            const imageStatus = getCurrentImageStatus();
+            
+            // Update debug info
+            const labelFile = currentMetadata.labelFile || 'No label file';
+            const matchStrategy = currentMetadata.matchStrategy || 'N/A';
+            debugInfo.innerHTML = `
+                Index: ${currentImageIndex}<br>
+                Label file: ${labelFile}<br>
+                Match: ${matchStrategy}<br>
+                Boxes: ${imageLabels.length}
+            `;
+            
+            // Update counter based on filter status
+            if (isFiltered) {
+                const currentPosInFilter = currentFilteredIndices.indexOf(currentImageIndex);
+                if (currentPosInFilter !== -1) {
+                    // Image is in filter
+                    imageCounter.textContent = `${currentPosInFilter + 1} / ${currentFilteredIndices.length} (filtered)`;
+                } else {
+                    // Image is filtered out but we're staying on it
+                    imageCounter.textContent = `- / ${currentFilteredIndices.length} (filtered out)`;
+                }
+            } else {
+                imageCounter.textContent = `${currentImageIndex + 1} / ${imageMetadata.length}`;
+            }
+            
+            // Update image name with appropriate status indicator
+            let statusIndicator, nameStyle = '';
+            
+            if (imageStatus === 'filtered-out') {
+                statusIndicator = '🔶'; // Orange diamond for filtered out
+                nameStyle = 'color: #ffc107; font-style: italic;';
+            } else if (hasLabels) {
+                statusIndicator = '🟢'; // Green for labeled
+            } else {
+                statusIndicator = '🔴'; // Red for unlabeled
+            }
+            
+            imageName.innerHTML = `<span style="${nameStyle}">${statusIndicator} ${currentMetadata.name}</span>`;
+            
+            // Update navigation buttons
+            if (isFiltered && imageStatus === 'filtered-out') {
+                // Special navigation for filtered-out images
+                const hasNextFiltered = currentFilteredIndices.some(idx => idx > currentImageIndex);
+                const hasPrevFiltered = currentFilteredIndices.some(idx => idx < currentImageIndex);
+                
+                prevBtn.disabled = !hasPrevFiltered;
+                nextBtn.disabled = !hasNextFiltered;
+                
+                // Update button text to indicate filtered navigation
+                prevBtn.textContent = '◀ Prev Filtered (A)';
+                nextBtn.textContent = 'Next Filtered (D) ▶';
+            } else {
+                // Normal navigation
+                const currentPos = validIndices.indexOf(currentImageIndex);
+                prevBtn.disabled = currentPos <= 0;
+                nextBtn.disabled = currentPos >= validIndices.length - 1;
+                
+                // Reset button text
+                prevBtn.textContent = '◀ Prev (A)';
+                nextBtn.textContent = 'Next (D) ▶';
+            }
+            
+            pageInput.max = validIndices.length;
+            
+            updateZoomLevel();
+            updateFilterStats();
+        }
+
+        function showDetailedDebug() {
+            if (imageMetadata.length === 0) {
+                alert('No images loaded');
+                return;
+            }
+            
+            const currentMetadata = imageMetadata[currentImageIndex];
+            const imageLabels = labels[currentImageIndex] || [];
+            
+            let debugReport = `=== LABEL CACHING DEBUG ===\n`;
+            debugReport += `Current Image Index: ${currentImageIndex}\n`;
+            debugReport += `Current Image Name: ${currentMetadata.name}\n`;
+            debugReport += `Label File Used: ${currentMetadata.labelFile || 'NONE'}\n`;
+            
+            debugReport += `\n=== BOXES vs LABELS COMPARISON ===\n`;
+            debugReport += `boxes[] array (what's displayed): ${boxes.length} items\n`;
+            debugReport += `labels[${currentImageIndex}] (what should be displayed): ${imageLabels.length} items\n`;
+            
+            // Check if boxes and labels match
+            const boxesMatch = boxes.length === imageLabels.length && 
+                boxes.every((box, idx) => 
+                    imageLabels[idx] && 
+                    box.cls === imageLabels[idx].cls &&
+                    Math.abs(box.xc - imageLabels[idx].xc) < 0.001 &&
+                    Math.abs(box.yc - imageLabels[idx].yc) < 0.001
+                );
+            
+            debugReport += `Arrays match: ${boxesMatch ? '✅ YES' : '❌ NO - THIS IS THE PROBLEM!'}\n`;
+            
+            if (!boxesMatch) {
+                debugReport += `\n=== WHAT'S CURRENTLY DISPLAYED (boxes[]) ===\n`;
+                boxes.forEach((box, idx) => {
+                    debugReport += `  ${idx + 1}. ${CLASS_NAMES[box.cls]} at (${(box.xc * 100).toFixed(1)}%, ${(box.yc * 100).toFixed(1)}%)\n`;
+                });
+                
+                debugReport += `\n=== WHAT SHOULD BE DISPLAYED (labels[${currentImageIndex}]) ===\n`;
+                imageLabels.forEach((box, idx) => {
+                    debugReport += `  ${idx + 1}. ${CLASS_NAMES[box.cls]} at (${(box.xc * 100).toFixed(1)}%, ${(box.yc * 100).toFixed(1)}%)\n`;
+                });
+                
+                debugReport += `\n🔧 SOLUTION: The boxes[] array is stale. Click "Reload Current Image" to fix.\n`;
+            }
+            
+            console.log(debugReport);
+            
+            alert(`🔍 LABEL CACHING ANALYSIS:
+
+Current Image: ${currentMetadata.name}
+Displayed boxes: ${boxes.length}
+Correct labels: ${imageLabels.length}
+Arrays match: ${boxesMatch ? 'YES ✅' : 'NO ❌'}
+
+${!boxesMatch ? '🚨 The boxes[] array is showing stale data from previous image!' : '✅ Labels are correct'}
+
+Check console for detailed comparison.`);
+        }
+
+        // Add a manual fix button
+        function reloadCurrentImage() {
+            console.log('🔄 Manually reloading current image...');
+            loadCurrentImage();
+        }
+
+        function updateBoxList() {
+            const boxList = document.getElementById('boxList');
+            boxList.innerHTML = '';
+            
+            boxes.forEach((box, index) => {
+                const item = document.createElement('div');
+                item.className = `box-item ${index === selectedBoxIndex ? 'selected' : ''}`;
+                
+                const info = document.createElement('span');
+                info.textContent = `${index + 1}. ${CLASS_NAMES[box.cls]}`;
+                
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-btn';
+                deleteBtn.textContent = 'Delete';
+                deleteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    saveState();
+                    boxes.splice(index, 1);
+                    if (selectedBoxIndex === index) {
+                        selectedBoxIndex = -1;
+                    } else if (selectedBoxIndex > index) {
+                        selectedBoxIndex--;
+                    }
+                    updateBoxList();
+                    draw();
+                    
+                    // Update database for current image
+                    saveCurrentLabels();
+                    updateImageInDatabase(currentImageIndex);
+                };
+                
+                item.appendChild(info);
+                item.appendChild(deleteBtn);
+                
+                item.onclick = () => {
+                    selectedBoxIndex = index;
+                    updateBoxList();
+                    draw();
+                };
+                
+                boxList.appendChild(item);
+            });
+        }
+
+        // Project management and export functions
+        function saveProject() {
+            const projectName = prompt('Enter project name:') || 
+                               `Project_${new Date().toISOString().split('T')[0]}`;
+            
+            if (imageMetadata.length === 0) {
+                alert('No images to save');
+                return;
+            }
+
+            saveCurrentLabels();
+            
+            const project = {
+                name: projectName,
+                created: new Date().toISOString(),
+                imageCount: imageMetadata.length,
+                labels: labels,
+                currentIndex: currentImageIndex
+            };
+
+            try {
+                localStorage.setItem(`yolo_project_${projectName}`, JSON.stringify(project));
+                alert(`Project "${projectName}" saved successfully! (Labels only - re-upload images when loading)`);
+            } catch (e) {
+                alert('Failed to save project - too much data for browser storage. Try exporting labels instead.');
+            }
+        }
+
+        function exportStats() {
+            if (!labelDatabase.isBuilt) {
+                alert('Database not ready. Please wait for it to build.');
+                return;
+            }
+            
+            const total = imageMetadata.length;
+            const labeled = labelDatabase.statusIndex.labeled.size;
+            const unlabeled = labelDatabase.statusIndex.unlabeled.size;
+            const totalBoxes = labels.reduce((sum, l) => sum + (l ? l.length : 0), 0);
+            
+            const classStats = {};
+            CLASS_NAMES.forEach((className, index) => {
+                const count = labelDatabase.classIndex[index].size;
+                if (count > 0) {
+                    classStats[className] = count;
+                }
+            });
+            
+            const report = `YOLO Dataset Statistics
+==========================================
+Total Images: ${total}
+Labeled Images: ${labeled}
+Unlabeled Images: ${unlabeled}
+Total Bounding Boxes: ${totalBoxes}
+
+Class Distribution (Images containing class):
+${Object.entries(classStats).map(([cls, count]) => `${cls}: ${count}`).join('\n')}
+
+Database Status: ${labelDatabase.isBuilt ? 'Ready' : 'Not Built'}
+Cache Size: ${imageCache.size()} images
+Filter Cache: ${filterCache.size} combinations
+
+Generated: ${new Date().toISOString()}`;
+            
+            const blob = new Blob([report], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'dataset_statistics.txt';
+            link.click();
+        }
+
+        function handleFileDrop(e) {
+            const files = Array.from(e.dataTransfer.files);
+            const imageFiles = files.filter(f => f.type.startsWith('image/'));
+            const labelFiles = files.filter(f => f.name.endsWith('.txt'));
+            
+            if (imageFiles.length > 0) {
+                loadImagesOptimized(imageFiles);
+            }
+            if (labelFiles.length > 0) {
+                loadLabelsOptimized(labelFiles);
+            }
+        }
+
+        // Memory cleanup
+        function cleanupMemory() {
+            const currentIndex = currentImageIndex;
+            const keepIndices = [];
+            
+            for (let i = Math.max(0, currentIndex - 5); i <= Math.min(imageMetadata.length - 1, currentIndex + 5); i++) {
+                keepIndices.push(i);
+            }
+            
+            for (const [index, img] of imageCache.cache.entries()) {
+                if (!keepIndices.includes(index)) {
+                    imageCache.cache.delete(index);
+                    imageMetadata[index].loaded = false;
+                    imageMetadata[index].img = null;
+                }
+            }
+            
+            document.getElementById('loadedImages').textContent = imageCache.size();
+        }
+
+        setInterval(cleanupMemory, 30000);
+
+        window.addEventListener('beforeunload', () => {
+            imageCache.clear();
+            imageMetadata = [];
+            labels = [];
+            filterCache.clear();
+        });
+    </script>
+
+    <!-- Include JSZip for downloading labels -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+</body>
+</html>
