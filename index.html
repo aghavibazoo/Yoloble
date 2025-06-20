@@ -545,6 +545,97 @@
             position: relative;
             display: inline-block;
         }
+
+        /* Class Management Styles */
+        .class-management {
+            background: #333;
+            padding: 15px;
+            border-radius: 4px;
+        }
+
+        .class-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #555;
+        }
+
+        .class-actions {
+            display: flex;
+            gap: 5px;
+        }
+
+        .class-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .class-edit-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px;
+            margin-bottom: 5px;
+            background: #444;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .class-edit-item:hover {
+            background: #4a4a4a;
+        }
+
+        .class-number {
+            min-width: 30px;
+            font-weight: bold;
+            color: #4a90e2;
+            text-align: center;
+        }
+
+        .class-name-input {
+            flex: 1;
+            background: #555;
+            border: 1px solid #666;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+
+        .class-name-input:focus {
+            outline: none;
+            border-color: #4a90e2;
+            background: #666;
+        }
+
+        .class-color-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid #666;
+        }
+
+        .remove-class-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 4px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 10px;
+            min-width: 24px;
+        }
+
+        .remove-class-btn:hover {
+            background: #c0392b;
+        }
+
+        .remove-class-btn:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -558,6 +649,10 @@
             <button class="btn" onclick="document.getElementById('labelUpload').click()">
                 Upload Labels
             </button>
+            <input type="file" id="classUpload" class="file-input" accept=".txt,.names">
+            <button class="btn" onclick="document.getElementById('classUpload').click()">
+                Upload Classes
+            </button>
             <div class="dropdown" style="position: relative; display: inline-block;">
                 <button class="btn" id="downloadBtn" onclick="toggleDownloadMenu()">
                     Download Labels ▼
@@ -570,6 +665,9 @@
             </div>
             <button class="btn btn-success" id="saveBtn" onclick="saveProject()">
                 Save Project
+            </button>
+            <button class="btn" onclick="toggleClassEditor()" id="editClassesBtn">
+                Edit Classes
             </button>
             <button class="btn" id="undoBtn" onclick="undo()" disabled>
                 Undo (Ctrl+Z)
@@ -686,6 +784,24 @@
                 </div>
             </div>
 
+            <!-- Class Management Section -->
+            <div class="section" id="classManagementSection" style="display: none;">
+                <h3>Class Management</h3>
+                <div class="class-management">
+                    <div class="class-info">
+                        <span>Current Classes: <strong id="classCount">9</strong></span>
+                        <div class="class-actions">
+                            <button class="btn" onclick="addNewClass()" style="font-size: 12px; padding: 4px 8px;">+ Add</button>
+                            <button class="btn" onclick="resetToDefaultClasses()" style="font-size: 12px; padding: 4px 8px;">Reset</button>
+                            <button class="btn" onclick="exportClassFile()" style="font-size: 12px; padding: 4px 8px;">Export</button>
+                        </div>
+                    </div>
+                    <div class="class-list" id="classEditList">
+                        <!-- Dynamic class editing items will be added here -->
+                    </div>
+                </div>
+            </div>
+
             <!-- Quick Navigation -->
             <div class="section">
                 <h3>Quick Navigation</h3>
@@ -739,11 +855,12 @@
 
             <div class="section">
                 <div class="instructions">
-                    <h4>Download Options:</h4>
-                    • <strong>All Labels:</strong> Download every label file<br>
-                    • <strong>Filtered Labels:</strong> Download only visible/filtered images<br>
-                    • <strong>Current Image:</strong> Download just the current image label<br>
-                    • Perfect for subset training and quality control
+                    <h4>Universal YOLO Editor:</h4>
+                    • <strong>Upload Classes:</strong> Load custom class definitions<br>
+                    • <strong>Edit Classes:</strong> Modify class names inline<br>
+                    • <strong>Tab/Shift+Tab:</strong> Cycle through classes<br>
+                    • <strong>0-9 Keys:</strong> Quick class selection<br>
+                    • Works with any number of classes and domains
                 </div>
             </div>
         </div>
@@ -762,9 +879,87 @@
     </div>
 
     <script>
-        const CLASS_NAMES = ['Car', 'Pickup truck', 'Van', '2ax Truck', '3ax Truck', '4ax Truck', '5ax+ Truck', '2ax Bus', '3ax Bus'];
+        // Universal YOLO Classification System
+        let CLASS_NAMES = ['Class 0', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8'];
+        let COLORS = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500', '#800080', '#ffc0cb', '#32cd32', '#ff1493', '#00ced1', '#ffd700', '#dc143c', '#9370db', '#228b22', '#ff4500', '#1e90ff', '#ff69b4', '#00fa9a'];
         const HANDLE_SIZE = 8;
-        const COLORS = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500', '#800080', '#ffc0cb'];
+        function loadClassFile(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    try {
+                        const content = e.target.result.trim();
+                        const lines = content.split('\n').filter(line => line.trim());
+                        
+                        if (lines.length > 0) {
+                            CLASS_NAMES = lines.map((line, index) => line.trim() || `Class ${index}`);
+                            
+                            // Extend colors if needed
+                            while (COLORS.length < CLASS_NAMES.length) {
+                                COLORS.push(`hsl(${(COLORS.length * 137.508) % 360}, 70%, 50%)`);
+                            }
+                            
+                            console.log(`Loaded ${CLASS_NAMES.length} classes:`, CLASS_NAMES);
+                            
+                            // Rebuild UI components
+                            setupClassSelector();
+                            setupClassFilterGrid();
+                            if (labelDatabase.isBuilt) {
+                                buildLabelDatabase();
+                            }
+                            updateUI();
+                            
+                            resolve({ success: true, count: CLASS_NAMES.length });
+                        } else {
+                            resolve({ success: false, reason: 'Empty file or no valid class names' });
+                        }
+                    } catch (error) {
+                        resolve({ success: false, reason: error.message });
+                    }
+                };
+                reader.onerror = () => resolve({ success: false, reason: 'File read error' });
+                reader.readAsText(file);
+            });
+        }
+
+        function resetToDefaultClasses() {
+            CLASS_NAMES = ['Class 0', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8'];
+            setupClassSelector();
+            setupClassFilterGrid();
+            if (labelDatabase.isBuilt) {
+                buildLabelDatabase();
+            }
+            updateUI();
+        }
+
+        function exportClassFile() {
+            const content = CLASS_NAMES.join('\n');
+            const blob = new Blob([content], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'classes.txt';
+            link.click();
+        }
+
+        async function handleClassFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            showLoading("Loading Classes...", "Processing class definitions...");
+            
+            const result = await loadClassFile(file);
+            
+            hideLoading();
+            
+            if (result.success) {
+                alert(`✅ Successfully loaded ${result.count} classes!\n\nNew Classes: ${CLASS_NAMES.slice(0, 5).join(', ')}${CLASS_NAMES.length > 5 ? '...' : ''}\n\nPrevious classes have been replaced.`);
+            } else {
+                alert(`❌ Failed to load classes: ${result.reason}\n\nExpected format:\nClass Name 1\nClass Name 2\nClass Name 3`);
+            }
+            
+            // Clear the file input
+            e.target.value = '';
+        }
 
         let canvas, ctx;
         let imageMetadata = [];
@@ -859,7 +1054,269 @@
 
         imageCache = new ImageCache(50);
 
-        // Download menu functionality
+        // Class Management Functions
+        function generateColorForIndex(index) {
+            if (index < COLORS.length) {
+                return COLORS[index];
+            }
+            // Generate HSL color for unlimited classes
+            const hue = (index * 137.508) % 360; // Golden angle approximation
+            return `hsl(${hue}, 70%, 50%)`;
+        }
+
+        function ensureColorsForClasses() {
+            while (COLORS.length < CLASS_NAMES.length) {
+                COLORS.push(generateColorForIndex(COLORS.length));
+            }
+        }
+
+        function loadClassFile(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = e => {
+                    try {
+                        const content = e.target.result.trim();
+                        const lines = content.split('\n').filter(line => line.trim());
+                        
+                        if (lines.length > 0) {
+                            // COMPLETELY REPLACE existing classes
+                            CLASS_NAMES = lines.map((line, index) => line.trim() || `Class ${index}`);
+                            
+                            // Reset colors array and regenerate for new classes
+                            COLORS = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500', '#800080', '#ffc0cb'];
+                            ensureColorsForClasses();
+                            
+                            console.log(`Replaced with ${CLASS_NAMES.length} classes:`, CLASS_NAMES);
+                            
+                            // Clear any existing label data that might reference old classes
+                            resetClassReferences();
+                            
+                            // Rebuild UI components
+                            rebuildClassUI();
+                            
+                            resolve({ success: true, count: CLASS_NAMES.length });
+                        } else {
+                            resolve({ success: false, reason: 'Empty file or no valid class names' });
+                        }
+                    } catch (error) {
+                        resolve({ success: false, reason: error.message });
+                    }
+                };
+                reader.onerror = () => resolve({ success: false, reason: 'File read error' });
+                reader.readAsText(file);
+            });
+        }
+
+        function resetClassReferences() {
+            // Reset current class to 0 if it's out of bounds
+            currentClass = 0;
+            
+            // Clear current boxes since class indices might be invalid
+            boxes = [];
+            selectedBoxIndex = -1;
+            
+            // Option: Clear all existing labels or ask user
+            const hasExistingLabels = labels.some(labelArray => labelArray && labelArray.length > 0);
+            if (hasExistingLabels) {
+                const clearLabels = confirm(
+                    'You have existing labels that may reference different classes.\n\n' +
+                    'Choose:\n' +
+                    '• OK: Clear all existing labels (recommended)\n' +
+                    '• Cancel: Keep labels (may cause class mismatch issues)'
+                );
+                
+                if (clearLabels) {
+                    // Clear all labels
+                    labels = new Array(imageMetadata.length).fill(null).map(() => []);
+                    console.log('Cleared all existing labels due to class change');
+                }
+            }
+        }
+
+        function rebuildClassUI() {
+            // Rebuild class selector (Current Class section)
+            setupClassSelector();
+            
+            // Rebuild class filter grid (Smart Filters section)
+            setupClassFilterGrid();
+            
+            // Update class editor if it's open
+            updateClassEditor();
+            
+            // Reset current class if it's out of bounds
+            if (currentClass >= CLASS_NAMES.length) {
+                currentClass = 0;
+            }
+            
+            // Update the class selector to show current selection
+            updateClassSelector();
+            
+            // Rebuild database if it exists
+            if (labelDatabase.isBuilt) {
+                buildLabelDatabase();
+            }
+            
+            // Force UI update
+            updateUI();
+            draw();
+        }
+
+        function setupClassSelector() {
+            const selector = document.getElementById('classSelector');
+            const filterSelector = document.getElementById('filterClass');
+            
+            // Clear existing content
+            selector.innerHTML = '';
+            
+            // Clear and rebuild filter dropdown (keep the "Any Class" option)
+            filterSelector.innerHTML = '<option value="">Any Class</option>';
+            
+            CLASS_NAMES.forEach((className, index) => {
+                // Class selector buttons (Current Class section)
+                const btn = document.createElement('button');
+                btn.className = 'class-btn';
+                btn.textContent = `${index}: ${className}`;
+                btn.onclick = () => setCurrentClass(index);
+                selector.appendChild(btn);
+
+                // Filter dropdown (Smart Filters section)
+                const option = document.createElement('option');
+                option.value = index;
+                option.textContent = `${index}: ${className}`;
+                filterSelector.appendChild(option);
+            });
+            
+            // Update the active class button
+            updateClassSelector();
+        }
+
+        function resetToDefaultClasses() {
+            if (confirm('Reset to default classes? This will clear any custom class names.')) {
+                CLASS_NAMES = ['Class 0', 'Class 1', 'Class 2', 'Class 3', 'Class 4', 'Class 5', 'Class 6', 'Class 7', 'Class 8'];
+                COLORS = ['#00ff00', '#ff0000', '#0000ff', '#ffff00', '#ff00ff', '#00ffff', '#ffa500', '#800080', '#ffc0cb'];
+                rebuildClassUI();
+            }
+        }
+
+        function exportClassFile() {
+            const content = CLASS_NAMES.join('\n');
+            const blob = new Blob([content], { type: 'text/plain' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'classes.txt';
+            link.click();
+        }
+
+        function addNewClass() {
+            const newClassName = `Class ${CLASS_NAMES.length}`;
+            CLASS_NAMES.push(newClassName);
+            ensureColorsForClasses();
+            rebuildClassUI();
+        }
+
+        function removeClass(index) {
+            if (CLASS_NAMES.length <= 1) {
+                alert('Cannot remove the last class. At least one class is required.');
+                return;
+            }
+            
+            if (confirm(`Remove "${CLASS_NAMES[index]}"? This will affect existing labels with this class.`)) {
+                CLASS_NAMES.splice(index, 1);
+                
+                // Adjust existing labels
+                for (let imageIndex = 0; imageIndex < labels.length; imageIndex++) {
+                    labels[imageIndex] = labels[imageIndex].filter(box => box.cls !== index)
+                        .map(box => {
+                            if (box.cls > index) {
+                                return { ...box, cls: box.cls - 1 };
+                            }
+                            return box;
+                        });
+                }
+                
+                // Update current boxes if we're viewing an image
+                boxes = boxes.filter(box => box.cls !== index)
+                    .map(box => {
+                        if (box.cls > index) {
+                            return { ...box, cls: box.cls - 1 };
+                        }
+                        return box;
+                    });
+                
+                rebuildClassUI();
+                updateBoxList();
+                draw();
+            }
+        }
+
+        function updateClassName(index, newName) {
+            CLASS_NAMES[index] = newName.trim() || `Class ${index}`;
+            setupClassSelector();
+            setupClassFilterGrid();
+            updateBoxList();
+            draw();
+        }
+
+        function toggleClassEditor() {
+            const section = document.getElementById('classManagementSection');
+            const btn = document.getElementById('editClassesBtn');
+            
+            if (section.style.display === 'none') {
+                section.style.display = 'block';
+                btn.textContent = 'Hide Classes';
+                updateClassEditor();
+            } else {
+                section.style.display = 'none';
+                btn.textContent = 'Edit Classes';
+            }
+        }
+
+        function updateClassEditor() {
+            const classEditList = document.getElementById('classEditList');
+            const classCount = document.getElementById('classCount');
+            
+            classCount.textContent = CLASS_NAMES.length;
+            classEditList.innerHTML = '';
+            
+            CLASS_NAMES.forEach((className, index) => {
+                const item = document.createElement('div');
+                item.className = 'class-edit-item';
+                
+                const color = generateColorForIndex(index);
+                
+                item.innerHTML = `
+                    <div class="class-number">${index}</div>
+                    <input type="text" class="class-name-input" value="${className}" 
+                           onchange="updateClassName(${index}, this.value)"
+                           onblur="updateClassName(${index}, this.value)">
+                    <div class="class-color-indicator" style="background: ${color}"></div>
+                    <button class="remove-class-btn" onclick="removeClass(${index})" 
+                            ${CLASS_NAMES.length <= 1 ? 'disabled' : ''}>×</button>
+                `;
+                
+                classEditList.appendChild(item);
+            });
+        }
+
+        async function handleClassFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            showLoading("Loading Classes...", "Processing class definitions...");
+            
+            const result = await loadClassFile(file);
+            
+            hideLoading();
+            
+            if (result.success) {
+                alert(`✅ Successfully loaded ${result.count} classes!\n\nClasses: ${CLASS_NAMES.slice(0, 5).join(', ')}${CLASS_NAMES.length > 5 ? '...' : ''}`);
+            } else {
+                alert(`❌ Failed to load classes: ${result.reason}\n\nExpected format:\nClass Name 1\nClass Name 2\nClass Name 3`);
+            }
+            
+            // Clear the file input
+            e.target.value = '';
+        }
         function toggleDownloadMenu() {
             const menu = document.getElementById('downloadMenu');
             menu.style.display = menu.style.display === 'block' ? 'none' : 'block';
@@ -1356,7 +1813,12 @@
         // Multi-class filter UI
         function setupClassFilterGrid() {
             const grid = document.getElementById('classFilterGrid');
+            
+            // Clear existing content completely
             grid.innerHTML = '';
+            
+            // Reset multi-class filter state since classes changed
+            classFilterState = {};
             
             CLASS_NAMES.forEach((className, index) => {
                 const btn = document.createElement('button');
@@ -1629,27 +2091,57 @@
             const selector = document.getElementById('classSelector');
             const filterSelector = document.getElementById('filterClass');
             
+            // Clear existing content completely
+            selector.innerHTML = '';
+            
+            // Clear and rebuild filter dropdown (keep the "Any Class" option)
+            filterSelector.innerHTML = '<option value="">Any Class</option>';
+            
             CLASS_NAMES.forEach((className, index) => {
-                // Class selector buttons
+                // Class selector buttons (Current Class section)
                 const btn = document.createElement('button');
                 btn.className = 'class-btn';
                 btn.textContent = `${index}: ${className}`;
                 btn.onclick = () => setCurrentClass(index);
                 selector.appendChild(btn);
 
-                // Filter dropdown
+                // Filter dropdown (Smart Filters section)
                 const option = document.createElement('option');
                 option.value = index;
-                option.textContent = className;
+                option.textContent = `${index}: ${className}`;
                 filterSelector.appendChild(option);
             });
+            
+            // Update the active class button
             updateClassSelector();
+        }
+
+        function setupClassFilterGrid() {
+            const grid = document.getElementById('classFilterGrid');
+            
+            // Clear existing content completely
+            grid.innerHTML = '';
+            
+            // Reset multi-class filter state since classes changed
+            classFilterState = {};
+            
+            CLASS_NAMES.forEach((className, index) => {
+                const btn = document.createElement('button');
+                btn.className = 'class-filter-btn';
+                btn.textContent = `${index}`;
+                btn.title = className;
+                btn.onclick = (e) => toggleClassFilter(index, e.shiftKey);
+                grid.appendChild(btn);
+            });
+            
+            updateClassFilterGrid();
         }
 
         function setupEventListeners() {
             // File uploads
             document.getElementById('imageUpload').addEventListener('change', handleImageUpload);
             document.getElementById('labelUpload').addEventListener('change', handleLabelUpload);
+            document.getElementById('classUpload').addEventListener('change', handleClassFileUpload);
 
             // Canvas events
             canvas.addEventListener('mousedown', onMouseDown);
@@ -2050,7 +2542,7 @@
             });
         }
 
-        // Enhanced keyboard shortcuts
+        // Enhanced keyboard shortcuts with dynamic class support
         async function onKeyDown(e) {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') {
                 return;
@@ -2089,6 +2581,17 @@
                         setCurrentClass(classIndex);
                     }
                 }
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                // Cycle through classes with Tab
+                if (e.shiftKey) {
+                    // Shift+Tab: Previous class
+                    currentClass = (currentClass - 1 + CLASS_NAMES.length) % CLASS_NAMES.length;
+                } else {
+                    // Tab: Next class
+                    currentClass = (currentClass + 1) % CLASS_NAMES.length;
+                }
+                setCurrentClass(currentClass);
             } else if (e.key === 'v' || e.key === 'V') {
                 toggleBoxes();
             } else if (e.key === 'f' || e.key === 'F') {
@@ -2342,7 +2845,7 @@
                 const screenStart = imageToScreen(x1, y1);
                 const screenEnd = imageToScreen(x2, y2);
                 
-                ctx.strokeStyle = COLORS[currentClass];
+                ctx.strokeStyle = COLORS[currentClass] || generateColorForIndex(currentClass);
                 ctx.lineWidth = 2;
                 ctx.setLineDash([5, 5]);
                 ctx.strokeRect(screenStart.x, screenStart.y, 
@@ -2462,7 +2965,7 @@
                     
                     if (width < 2 || height < 2) return;
                     
-                    const color = COLORS[box.cls] || '#00ff00';
+                    const color = COLORS[box.cls] || generateColorForIndex(box.cls);
                     const isSelected = index === selectedBoxIndex;
                     
                     // Draw box outline
