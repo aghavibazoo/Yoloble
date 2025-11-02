@@ -581,6 +581,23 @@
     function invalidateFilterCache(){ filterCache.clear(); if(isFiltered) applyFilters(); }
     function rebuildDatabase(){ buildLabelDatabase(); if(isFiltered) applyFilters(); }
 
+    
+    // ---- Deletion guard ----
+    function ensureCurrentNotDeleted(){
+      if(imageMetadata.length===0) return false;
+      const deletedSet = getDeletedSet();
+      if(currentImageIndex < 0 || currentImageIndex >= imageMetadata.length) currentImageIndex = 0;
+      const curMeta = imageMetadata[currentImageIndex];
+      if(curMeta && deletedSet.has(curMeta.name)){
+        const valid = getValidIndices();
+        if(valid.length===0) return false;
+        const next = valid.find(i=>i>currentImageIndex) ?? valid[0];
+        currentImageIndex = next;
+        return true;
+      }
+      return false;
+    }
+
     // ---- Filters ----
     const intersect=(A,B)=>{ const R=new Set(); for(const x of A){ if(B.has(x)) R.add(x) } return R };
     const union=(A,B)=>{ const R=new Set(A); for(const x of B) R.add(x); return R };
@@ -671,7 +688,7 @@
     };
     const getCurrentImageStatus = ()=>{ if(!isFiltered) return 'normal'; return currentFilteredIndices.includes(currentImageIndex)?'filtered-in':'filtered-out' };
 
-    async function previousImage(){
+    async function previousImage(){ ensureCurrentNotDeleted();
       saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
       if(isFiltered && getCurrentImageStatus()==='filtered-out'){
         const prev=currentFilteredIndices.filter(i=>i<currentImageIndex).pop();
@@ -681,7 +698,7 @@
         if(pos>0){ currentImageIndex=valid[pos-1]; await loadCurrentImage(); updateUI(); }
       }
     }
-    async function nextImage(){
+    async function nextImage(){ ensureCurrentNotDeleted();
       saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
       if(isFiltered && getCurrentImageStatus()==='filtered-out'){
         const nxt=currentFilteredIndices.find(i=>i>currentImageIndex);
@@ -827,7 +844,7 @@
           if(imageMetadata.length !== before){
             labels = labels.slice(0, imageMetadata.length);
           }
-          buildLabelDatabase(); await loadCurrentImage(); updateQuickNavigation(); updateUI();
+          buildLabelDatabase(); ensureCurrentNotDeleted(); await loadCurrentImage(); updateQuickNavigation(); updateUI();
         }
         alert('Status list(s) loaded');
       }catch(e){ console.error(e); alert('Failed to load status list'); }
@@ -893,6 +910,7 @@
     }
 
     async function loadCurrentImage(){
+      ensureCurrentNotDeleted();
       if(imageMetadata.length===0) return;
       const meta=imageMetadata[currentImageIndex];
       if(!meta.loaded) await loadImageAtIndex(currentImageIndex); /* <-- await ensures image is ready */
@@ -1029,6 +1047,7 @@
 
     // ---- Draw ----
     function draw(){
+      if(ensureCurrentNotDeleted()) { loadCurrentImage(); }
       if(imageMetadata.length===0){
         ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
         ctx.fillStyle='#666'; ctx.font='20px Arial'; ctx.textAlign='center';
