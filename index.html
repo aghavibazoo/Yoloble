@@ -1,40 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>YOLO Bounding Box Editor</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><text y=%2214%22 font-size=%2214%22>🖼️</text></svg>">
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background:#1a1a1a;color:#fff;overflow:hidden}
-    .header{background:#2d2d2d;padding:10px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #333}
-    .controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    .btn{background:#4a90e2;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:14px;transition:background .2s}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#1a1a1a;color:#fff;overflow:hidden}
+    .header{background:#2d2d2d;padding:10px 20px;display:flex;flex-direction:column;gap:8px;border-bottom:2px solid #333}
+    .controls-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+    .left-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .right-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .btn{background:#4a90e2;color:#fff;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-size:14px}
     .btn:hover{background:#357abd}
     .btn:disabled{background:#666;cursor:not-allowed}
-    .btn-success{background:#28a745}
-    .btn-success:hover{background:#218838}
-    .file-input{display:none}
+    .btn-danger{background:#e74c3c}.btn-danger:hover{background:#c0392b}
+    .btn-plain{background:#444}
     .info{display:flex;gap:20px;align-items:center;font-size:14px}
-    .main-container{display:flex;height:calc(100vh - 60px)}
+    .main-container{display:flex;height:calc(100vh - 110px)}
     .canvas-container{flex:1;position:relative;background:#0a0a0a;overflow:hidden}
-    #canvas{cursor:crosshair;display:block}
+    #canvas{display:block;width:100%;height:100%;cursor:crosshair}
     .sidebar{width:350px;background:#2d2d2d;border-left:2px solid #333;padding:20px;overflow-y:auto}
     .section{margin-bottom:25px}
     .section h3{margin-bottom:10px;color:#4a90e2;font-size:16px}
     .class-selector{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:15px}
-    .class-btn{background:#444;color:#fff;border:none;padding:8px;border-radius:4px;cursor:pointer;font-size:12px;transition:all .2s}
-    .class-btn:hover{background:#555}
+    .class-btn{background:#444;color:#fff;border:none;padding:8px;border-radius:4px;cursor:pointer;font-size:12px}
     .class-btn.active{background:#4a90e2}
     .box-list{max-height:200px;overflow-y:auto;border:1px solid #444;border-radius:4px}
-    .box-item{padding:8px 12px;border-bottom:1px solid #444;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background .2s}
-    .box-item:hover{background:#333}
+    .box-item{padding:8px 12px;border-bottom:1px solid #444;display:flex;justify-content:space-between;align-items:center}
     .box-item.selected{background:#4a90e2}
-    .box-item:last-child{border-bottom:none}
     .delete-btn{background:#e74c3c;color:#fff;border:none;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:12px}
-    .delete-btn:hover{background:#c0392b}
-
     .filter-section{background:#333;padding:15px;border-radius:4px;margin-bottom:20px}
     .filter-controls{display:flex;flex-direction:column;gap:10px}
     .filter-row{display:flex;gap:10px;align-items:center}
@@ -44,14 +39,11 @@
     .filter-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:10px}
     .stat-box{background:#555;padding:8px;border-radius:4px;text-align:center;font-size:11px}
     .stat-number{font-size:16px;font-weight:700;color:#4a90e2}
-
     .advanced-filters{margin-top:15px;padding-top:15px;border-top:1px solid #555}
     .class-filter-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;margin-top:10px}
-    .class-filter-btn{background:#444;color:#fff;border:none;padding:6px;border-radius:3px;cursor:pointer;font-size:10px;transition:all .2s}
-    .class-filter-btn:hover{background:#555}
+    .class-filter-btn{background:#444;color:#fff;border:none;padding:6px;border-radius:3px;cursor:pointer;font-size:10px}
     .class-filter-btn.included{background:#28a745}
     .class-filter-btn.excluded{background:#e74c3c}
-
     .performance-section{background:#333;padding:15px;border-radius:4px;margin-bottom:20px}
     .performance-stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px}
     .stat-item{background:#444;padding:8px;border-radius:4px;text-align:center}
@@ -59,85 +51,59 @@
     .stat-label{color:#ccc;margin-top:4px}
     .database-status{background:#555;padding:8px;border-radius:4px;margin-top:10px;font-size:11px;display:flex;justify-content:space-between;align-items:center}
     .status-indicator{width:8px;height:8px;border-radius:50%;margin-right:8px}
-    .status-ready{background:#28a745}
-    .status-building{background:#ffc107}
-    .status-error{background:#e74c3c}
-
+    .status-ready{background:#28a745}.status-building{background:#ffc107}.status-error{background:#e74c3c}
     .zoom-controls{display:flex;gap:10px;align-items:center;margin-bottom:15px}
     .zoom-btn{background:#444;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer;font-size:12px}
-    .zoom-btn:hover{background:#555}
     .zoom-level{font-size:12px;color:#ccc}
     .image-nav{display:flex;gap:10px;align-items:center}
     .nav-btn{background:#444;color:#fff;border:none;padding:6px 12px;border-radius:4px;cursor:pointer}
-    .nav-btn:hover{background:#555}
     .nav-btn:disabled{background:#666;cursor:not-allowed}
-
-    .drag-overlay{position:absolute;top:0;left:0;width:100%;height:100%;background:rgba(74,144,226,.1);border:2px dashed #4a90e2;display:none;align-items:center;justify-content:center;font-size:24px;color:#4a90e2;z-index:1000}
+    .drag-overlay{position:absolute;inset:0;background:rgba(74,144,226,.1);border:2px dashed #4a90e2;display:none;align-items:center;justify-content:center;font-size:24px;color:#4a90e2;z-index:1000}
     .drag-overlay.active{display:flex}
-
-    .loading-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center;z-index:2000}
+    .loading-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);display:none;align-items:center;justify-content:center;z-index:2000}
     .loading-content{background:#2d2d2d;padding:30px;border-radius:8px;text-align:center;min-width:300px}
     .loading-bar{width:100%;height:20px;background:#444;border-radius:10px;margin:20px 0;overflow:hidden}
     .loading-progress{height:100%;background:#4a90e2;width:0%;transition:width .3s;border-radius:10px}
-
-    .instructions{background:#333;padding:15px;border-radius:4px;font-size:12px;line-height:1.6}
-    .instructions h4{margin-bottom:8px;color:#4a90e2}
-
-    .pagination{display:flex;gap:10px;align-items:center;margin-bottom:15px}
-    .page-input{background:#444;border:1px solid #555;color:#fff;padding:4px 8px;border-radius:4px;font-size:12px;width:80px;text-align:center}
-    .quick-nav{display:flex;gap:5px;flex-wrap:wrap}
-    .quick-nav-btn{background:#444;color:#fff;border:none;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:10px}
-    .quick-nav-btn:hover{background:#555}
-
     .class-management{background:#333;padding:15px;border-radius:4px}
-    .class-info{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;padding-bottom:10px;border-bottom:1px solid #555}
-    .class-actions{display:flex;gap:5px}
-    .class-list{max-height:300px;overflow-y:auto}
-    .class-edit-item{display:flex;align-items:center;gap:10px;padding:8px;margin-bottom:5px;background:#444;border-radius:4px;transition:background .2s}
-    .class-edit-item:hover{background:#4a4a4a}
-    .class-number{min-width:30px;font-weight:700;color:#4a90e2;text-align:center}
-    .class-name-input{flex:1;background:#555;border:1px solid #666;color:#fff;padding:4px 8px;border-radius:3px;font-size:12px}
-    .class-name-input:focus{outline:none;border-color:#4a90e2;background:#666}
-    .class-color-indicator{width:20px;height:20px;border-radius:3px;border:1px solid #666}
-    .remove-class-btn{background:#e74c3c;color:#fff;border:none;padding:4px 6px;border-radius:3px;cursor:pointer;font-size:10px;min-width:24px}
-    .remove-class-btn:hover{background:#c0392b}
+    .class-info{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px}
+    .class-actions{display:flex;gap:8px}
+    .class-list{display:flex;flex-direction:column;gap:8px}
+    .class-edit-item{display:flex;align-items:center;gap:10px;background:#444;padding:8px;border-radius:4px}
+    .class-number{background:#555;color:#fff;padding:4px 8px;border-radius:3px;font-weight:700;min-width:30px;text-align:center}
+    .class-name-input{flex:1;background:#555;border:1px solid #666;color:#fff;padding:6px;border-radius:3px;font-size:12px}
+    .class-color-indicator{width:30px;height:30px;border-radius:4px;border:2px solid #666}
+    .remove-class-btn{background:#e74c3c;color:#fff;border:none;padding:4px 8px;border-radius:3px;cursor:pointer;font-size:16px;font-weight:700}
     .remove-class-btn:disabled{background:#666;cursor:not-allowed}
-
-    .toggle-row{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12px}
+    .pagination{display:flex;gap:10px;margin-bottom:15px}
+    .page-input{flex:1;background:#444;border:1px solid #555;color:#fff;padding:8px;border-radius:4px;font-size:12px}
+    .quick-nav{display:flex;flex-wrap:wrap;gap:5px}
+    .toggle-row{margin-top:10px;font-size:12px}
   </style>
 </head>
 <body>
   <div class="header">
-    <div class="controls">
-      <input type="file" id="imageUpload" class="file-input" accept="image/*,.txt,.json" multiple />
-      <button class="btn" onclick="document.getElementById('imageUpload').click()">Upload Images/Lists</button>
-      <button class="btn" onclick="YOLOUI.chooseFolder()">Choose Folder</button>
-
-      <input type="file" id="labelUpload" class="file-input" accept=".txt" multiple />
-      <button class="btn" onclick="document.getElementById('labelUpload').click()">Upload Labels</button>
-
-      <input type="file" id="classUpload" class="file-input" accept=".txt,.names" />
-      <button class="btn" onclick="document.getElementById('classUpload').click()">Upload Classes</button>
-
-      <input type="file" id="statusUpload" class="file-input" accept=".json,.txt" multiple />
-      <button class="btn" onclick="document.getElementById('statusUpload').click()">Upload Status List</button>
-
-      <button class="btn btn-success" id="saveBtn" onclick="YOLOUI.saveProject()">Save Project</button>
-      <button class="btn" id="loadBtn" onclick="YOLOUI.loadProject()">Load Project</button>
-      <button class="btn" id="deleteImgBtn" onclick="YOLOUI.deleteCurrentImage()">Delete Image</button>
-      <button class="btn" onclick="YOLOUI.toggleClassEditor()" id="editClassesBtn">Edit Classes</button>
-      <button class="btn" id="undoBtn" onclick="YOLOUI.undo()" disabled>Undo (Ctrl+Z)</button>
-
-      <button class="btn" onclick="YOLOUI.downloadBundle()">Download Bundle</button>
-      <button class="btn" onclick="YOLOUI.exportStats()" title="Export dataset statistics">Stats</button>
-    </div>
-    <div class="info">
-      <div class="image-nav">
-        <button class="nav-btn" id="prevBtn" onclick="YOLOUI.previousImage()" disabled>◀ Prev (A)</button>
-        <span id="imageCounter">0 / 0</span>
-        <button class="nav-btn" id="nextBtn" onclick="YOLOUI.nextImage()" disabled>Next (D) ▶</button>
+    <div class="controls-row">
+      <div class="left-controls">
+        <button class="btn" onclick="YOLOUI.chooseFolder()">Choose Folder</button>
+        <button class="btn" onclick="YOLOUI.toggleClassEditor()" id="editClassesBtn">Edit Classes</button>
+        <button class="btn" id="undoBtn" onclick="YOLOUI.undo()" disabled>Undo (Ctrl+Z)</button>
+        <button class="btn" onclick="YOLOUI.downloadBundle()">Download Bundle</button>
+        <button class="btn" onclick="YOLOUI.exportStats()" title="Export dataset statistics">Stats</button>
       </div>
-      <div id="imageName">No image loaded</div>
+      <div class="right-controls info">
+        <div class="image-nav">
+          <button class="nav-btn" id="prevBtn" onclick="YOLOUI.previousImage()" disabled>◀ Prev (A)</button>
+          <span id="imageCounter">0 / 0</span>
+          <button class="nav-btn" id="nextBtn" onclick="YOLOUI.nextImage()" disabled>Next (D) ▶</button>
+        </div>
+        <div id="imageName">No image loaded</div>
+      </div>
+    </div>
+    <div class="controls-row">
+      <div class="left-controls">
+        <button class="btn btn-danger" id="deleteImgBtn" onclick="YOLOUI.deleteCurrentImage()">Delete Image</button>
+        <button class="btn btn-plain" id="noLabelBtn" onclick="YOLOUI.markNoLabel()">No Label</button>
+      </div>
     </div>
   </div>
 
@@ -152,14 +118,8 @@
         <h3>Database Status</h3>
         <div class="performance-section">
           <div class="performance-stats">
-            <div class="stat-item">
-              <div class="stat-value" id="totalImages">0</div>
-              <div class="stat-label">Total Images</div>
-            </div>
-            <div class="stat-item">
-              <div class="stat-value" id="loadedImages">0</div>
-              <div class="stat-label">Loaded</div>
-            </div>
+            <div class="stat-item"><div class="stat-value" id="totalImages">0</div><div class="stat-label">Total Images</div></div>
+            <div class="stat-item"><div class="stat-value" id="loadedImages">0</div><div class="stat-label">Loaded</div></div>
           </div>
           <div class="database-status">
             <div style="display:flex;align-items:center">
@@ -229,7 +189,7 @@
       <div class="section">
         <h3>Quick Navigation</h3>
         <div class="pagination">
-          <input type="number" id="pageInput" class="page-input" placeholder="Go to..." min="1" />
+          <input type="number" id="pageInput" class="page-input" placeholder="Go to..." min="1"/>
           <button class="btn" onclick="YOLOUI.goToImage()">Go</button>
         </div>
         <div class="quick-nav" id="quickNav"></div>
@@ -247,11 +207,9 @@
           <span class="zoom-level" id="zoomLevel">100%</span>
           <button class="zoom-btn" onclick="YOLOUI.zoomIn()">+</button>
           <button class="zoom-btn" onclick="YOLOUI.fitToScreen()">Fit</button>
-          <button class="zoom-btn" onclick="YOLOUI.resetZoom()">100%</button>
+          <button class="btn" onclick="YOLOUI.resetZoom()">100%</button>
         </div>
-        <div>
-          <label><input type="checkbox" id="showBoxes" checked onchange="YOLOUI.toggleBoxes()" /> Show Boxes (V)</label>
-        </div>
+        <div><label><input type="checkbox" id="showBoxes" checked onchange="YOLOUI.toggleBoxes()"/> Show Boxes (V)</label></div>
       </div>
 
       <div class="section">
@@ -260,20 +218,10 @@
       </div>
 
       <div class="section">
-        <div class="instructions">
-          <h4>Debug Info:</h4>
-          <div id="debugInfo" style="font-size:11px;color:#ccc;margin-top:8px">No image loaded</div>
+        <div class="filter-section">
+          <h4 style="color:#4a90e2;margin-bottom:8px;font-size:12px">Debug</h4>
+          <div id="debugInfo" style="font-size:11px;color:#ccc">No image loaded</div>
           <button class="btn" onclick="YOLOUI.showDetailedDebug()" style="margin-top:8px;font-size:10px;padding:4px 8px">Show Debug Console</button>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="instructions">
-          <h4>Universal YOLO Editor:</h4>
-          • Upload Classes to set names<br />
-          • Tab/Shift+Tab to cycle classes<br />
-          • 0–9 keys select classes<br />
-          • Right-click drag to pan, wheel to zoom
         </div>
       </div>
     </div>
@@ -288,243 +236,117 @@
     </div>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <script>
   "use strict";
   const YOLOUI = (() => {
-    // ---- Constants ----
-    const HANDLE_SIZE = 8;
-    const MAX_UNDO = 50;
+    // ----- utilities -----
+    const base=s=>String(s).split(/[\\/]/).pop().replace(/\uFEFF/g,"").trim();
+    const norm=s=>base(s).toLowerCase();
+    const $=id=>document.getElementById(id);
 
-    // ---- State ----
-    let CLASS_NAMES = ["Class 0","Class 1","Class 2","Class 3","Class 4","Class 5","Class 6","Class 7","Class 8"];
-    let COLORS = ["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb","#32cd32","#ff1493","#00ced1","#ffd700","#dc143c","#9370db","#228b22","#ff4500","#1e90ff","#ff69b4","#00fa9a"];
+    // ----- constants / state -----
+    const HANDLE_SIZE=8, MAX_UNDO=50;
+    let CLASS_NAMES=["Class 0","Class 1","Class 2","Class 3","Class 4","Class 5","Class 6","Class 7","Class 8"];
+    let COLORS=["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb","#32cd32","#ff1493","#00ced1","#ffd700","#dc143c","#9370db","#228b22","#ff4500","#1e90ff","#ff69b4","#00fa9a"];
+    const colorOf=i=>COLORS[i]||`hsl(${(i*137.508)%360},70%,50%)`;
+    const ensureColors=()=>{ while(COLORS.length<CLASS_NAMES.length) COLORS.push(colorOf(COLORS.length)); };
 
-    let canvas, ctx;
-    let imageMetadata = [];
-    let labels = [];
-    let currentImageIndex = 0;
-    let currentClass = 0;
-    let zoom = 1, panX = 0, panY = 0;
-    let boxes = [];
-    let selectedBoxIndex = -1;
-    let undoStack = [];
-    let showBoxes = true;
-    let isLoading = false, loadingCancelled = false;
+    let canvas, ctx, viewW=0, viewH=0;
+    let zoom=1, panX=0, panY=0;
 
-    // Unified status list
-    let statusMap = new Map(); // name -> 'labeled'|'deleted'|'unlabeled'
-    let hidePrevLabeled = false;
+    // single render transform
+    const RS={dx:0,dy:0,scaleX:1,scaleY:1,imgW:0,imgH:0};
 
-    // Scheduler
-    let pendingFrame = null;
-    const scheduleDraw = () => {
-      if (pendingFrame !== null) return;
-      pendingFrame = requestAnimationFrame(() => { pendingFrame = null; draw(); });
-    };
+    let imageMetadata=[], labels=[], boxes=[];
+    let selectedBoxIndex=-1, currentImageIndex=0, currentClass=0;
+    let undoStack=[], showBoxes=true, isLoading=false, loadingCancelled=false;
 
-    // ---- LRU Cache ----
-    class ImageCache {
-      constructor(maxSize = 50){ this.maxSize=maxSize; this.cache=new Map(); }
-      get(key){ if(this.cache.has(key)){ const v=this.cache.get(key); this.cache.delete(key); this.cache.set(key,v); return v } return null }
-      set(key,value){ if(this.cache.has(key)){ this.cache.delete(key) } else if(this.cache.size>=this.maxSize){ const fk=this.cache.keys().next().value; this.cache.delete(fk) } this.cache.set(key,value) }
-      clear(){ this.cache.clear() }
-      size(){ return this.cache.size }
-    }
-    const imageCache = new ImageCache(50);
+    let statusMap=new Map(), hidePrevLabeled=false;
 
-    // ---- Label DB / Filters ----
-    const labelDatabase = {
-      imageIndex: [],
-      classIndex: {},
-      statusIndex: { labeled: new Set(), unlabeled: new Set() },
-      isBuilt: false,
-      lastUpdate: null
-    };
-    const filterCache = new Map();
-    let currentFilteredIndices = [];
-    let isFiltered = false;
-    let classFilterState = {};
+    let pendingFrame=null;
+    const scheduleDraw=()=>{ if(pendingFrame!==null) return; pendingFrame=requestAnimationFrame(()=>{pendingFrame=null; draw();}); };
 
-    // ---- DOM helper ----
-    const $ = (id)=>document.getElementById(id);
+    class ImageCache{constructor(m=50){this.m=m;this.c=new Map()}get(k){if(this.c.has(k)){const v=this.c.get(k);this.c.delete(k);this.c.set(k,v);return v}return null}set(k,v){if(this.c.has(k)){this.c.delete(k)}else if(this.c.size>=this.m){const fk=this.c.keys().next().value;this.c.delete(fk)}this.c.set(k,v)}clear(){this.c.clear()}size(){return this.c.size}}
+    const imageCache=new ImageCache(50);
 
-    // ---- Class color utils ----
-    const generateColorForIndex = (i)=> i < COLORS.length ? COLORS[i] : `hsl(${(i*137.508)%360},70%,50%)`;
-    const ensureColorsForClasses = ()=>{ while(COLORS.length < CLASS_NAMES.length){ COLORS.push(generateColorForIndex(COLORS.length)); } };
+    const labelDatabase={imageIndex:[],classIndex:{},statusIndex:{labeled:new Set(),unlabeled:new Set()},isBuilt:false,lastUpdate:null};
+    const filterCache=new Map(); let currentFilteredIndices=[], isFiltered=false, classFilterState={};
 
-    // ---- Status list persistence ----
-    const STATUS_KEY = 'yolo_image_status';
-    function persistStatus(){
-      try{
-        const payload = [...statusMap.entries()].map(([name,status])=>({name,status}));
-        localStorage.setItem(STATUS_KEY, JSON.stringify(payload));
-      }catch(e){}
-    }
-    function loadStatus(){
-      try{
-        const legacy = localStorage.getItem('yolo_skip_list');
-        if(legacy){
-          JSON.parse(legacy).forEach(n=>statusMap.set(n,'deleted'));
-          localStorage.removeItem('yolo_skip_list');
-        }
-        const raw = localStorage.getItem(STATUS_KEY);
-        if(raw){
-          const arr = JSON.parse(raw); if(Array.isArray(arr)){
-            arr.forEach(rec=>{
-              if(rec && typeof rec.name==='string' && typeof rec.status==='string'){
-                statusMap.set(rec.name, rec.status);
-              }
-            });
-          }
-        }
-      }catch(e){}
-    }
-    function setStatus(name, status){
-      if(!name) return;
-      if(status==='unlabeled'){
-        if(statusMap.get(name)==='deleted'){ /* keep deleted */ }
-        else statusMap.set(name,'unlabeled');
-      } else {
-        statusMap.set(name,status);
-      }
-      persistStatus();
-    }
-    function getDeletedSet(){
-      const s=new Set();
-      for(const [n,st] of statusMap.entries()){ if(st==='deleted') s.add(n); }
-      return s;
-    }
-    function applyDeletedFilter(){
-      const deleted = getDeletedSet();
-      if(!deleted || deleted.size===0) return;
-      const newMeta = [];
-      const newLabels = [];
-      for(let i=0;i<imageMetadata.length;i++){
-        const nm = imageMetadata[i].name;
-        if(!deleted.has(nm)){
-          newMeta.push(imageMetadata[i]);
-          newLabels.push(labels[i] || []);
-        }
-      }
-      if(newMeta.length === imageMetadata.length) return; // nothing to prune
-      imageMetadata = newMeta;
-      labels = newLabels;
-      if(imageMetadata.length === 0){
-        currentImageIndex = 0;
-      } else if(currentImageIndex >= imageMetadata.length){
-        currentImageIndex = imageMetadata.length - 1;
-      }
-      labelDatabase.isBuilt = false;
-      buildLabelDatabase();
-      if (typeof updateFilterStats === 'function') updateFilterStats();
-      if (typeof updateDatabaseStatus === 'function') updateDatabaseStatus();
-    }
+    const STATUS_KEY='yolo_image_status';
+    function persistStatus(){ try{localStorage.setItem(STATUS_KEY,JSON.stringify([...statusMap.entries()].map(([n,s])=>({name:n,status:s}))))}catch{} }
+    function loadStatus(){ try{const raw=localStorage.getItem(STATUS_KEY); if(raw) JSON.parse(raw).forEach(r=>{ if(r?.name&&r?.status) statusMap.set(norm(r.name),r.status) })}catch{} }
+    function setStatus(name,status){ const k=norm(name); if(!k) return; if(status==='unlabeled'){ if(statusMap.get(k)!=='deleted') statusMap.set(k,'unlabeled'); } else statusMap.set(k,status); persistStatus() }
+    const getDeletedSet=()=>{ const s=new Set(); for(const [n,st] of statusMap.entries()) if(st==='deleted') s.add(n); return s; };
 
-    function exportStatusFilesToZip(zip){
-      const deleted = [...statusMap.entries()].filter(([_,st])=>st==='deleted').map(([n])=>n);
-      const labeled = [...statusMap.entries()].filter(([_,st])=>st==='labeled').map(([n])=>n);
-      const statusJson = JSON.stringify([...statusMap.entries()].map(([name,status])=>({name,status})), null, 2);
-      zip.folder('lists').file('deleted_list.txt', deleted.join('\n'));
-      zip.folder('lists').file('labeled_list.txt', labeled.join('\n'));
-      zip.folder('lists').file('image_status.json', statusJson);
-    }
+    function showLoading(t="Loading...",s="Processing..."){$("loadingTitle").textContent=t;$("loadingStatus").textContent=s;$("loadingProgress").style.width='0%';$("loadingOverlay").style.display='flex';isLoading=true;loadingCancelled=false}
+    function updateLoading(p,s){ if(loadingCancelled) return false; $("loadingProgress").style.width=`${p}%`; $("loadingStatus").textContent=s; return true }
+    function hideLoading(){$("loadingOverlay").style.display='none';isLoading=false;loadingCancelled=false}
+    function cancelLoading(){loadingCancelled=true;hideLoading()}
 
-    // ---- Loading overlay ----
-    function showLoading(title="Loading...", status="Processing..."){
-      $("loadingTitle").textContent = title;
-      $("loadingStatus").textContent = status;
-      $("loadingProgress").style.width = '0%';
-      $("loadingOverlay").style.display = 'flex';
-      isLoading = true; loadingCancelled = false;
-    }
-    function updateLoading(progress, status){
-      if(loadingCancelled) return false;
-      $("loadingProgress").style.width = `${progress}%`;
-      $("loadingStatus").textContent = status;
-      return true;
-    }
-    function hideLoading(){ $("loadingOverlay").style.display = 'none'; isLoading=false; loadingCancelled=false }
-    function cancelLoading(){ loadingCancelled = true; hideLoading(); }
-
-    // ---- Canvas helpers ----
     function setupCanvas(){
-      canvas = $("canvas"); ctx = canvas.getContext('2d');
-      const resize = ()=>{ canvas.width = canvas.parentElement.clientWidth; canvas.height = canvas.parentElement.clientHeight; scheduleDraw(); };
-      resize(); window.addEventListener('resize', resize);
-    }
-    const getCanvasCoordinates = (e)=>{ const r=canvas.getBoundingClientRect(); return {x:e.clientX-r.left,y:e.clientY-r.top} };
-    function screenToImage(sx, sy){
-      const meta = imageMetadata[currentImageIndex]; if(!meta?.img) return {x:0,y:0};
-      const img=meta.img; const cx=canvas.width/2, cy=canvas.height/2; const sw=img.width*zoom, sh=img.height*zoom;
-      const ix = cx + panX - sw/2; const iy = cy + panY - sh/2;
-      return { x:(sx-ix)/zoom, y:(sy-iy)/zoom };
-    }
-    function imageToScreen(ix, iy){
-      const meta=imageMetadata[currentImageIndex]; if(!meta?.img) return {x:0,y:0};
-      const img=meta.img; const cx=canvas.width/2, cy=canvas.height/2; const sw=img.width*zoom, sh=img.height*zoom;
-      const x = cx + panX - sw/2 + ix*zoom; const y = cy + panY - sh/2 + iy*zoom; return {x,y};
-    }
-    function normalizedToImage(box){
-      const meta=imageMetadata[currentImageIndex]; if(!meta?.img) return {x1:0,y1:0,x2:0,y2:0};
-      const img=meta.img; const cx=box.xc*img.width, cy=box.yc*img.height; const w=box.w*img.width, h=box.h*img.height;
-      return { x1:cx-w/2, y1:cy-h/2, x2:cx+w/2, y2:cy+h/2 };
-    }
-    function imageToNormalized(x1,y1,x2,y2){
-      const meta=imageMetadata[currentImageIndex]; if(!meta?.img) return {cls:0,xc:0,yc:0,w:0,h:0};
-      const img=meta.img;
-      const cx=(x1+x2)/2/img.width, cy=(y1+y2)/img.height, w=Math.abs(x2-x1)/img.width, h=Math.abs(y2-y1)/img.height;
-      return { cls: currentClass, xc: cx, yc: cy, w: w, h: h };
+      canvas=$("canvas"); ctx=canvas.getContext('2d');
+      const resize=()=>{
+        const dpr=window.devicePixelRatio||1;
+        const rect=canvas.getBoundingClientRect();
+        viewW=Math.max(1,Math.round(rect.width));
+        viewH=Math.max(1,Math.round(rect.height));
+        canvas.width=Math.round(viewW*dpr);
+        canvas.height=Math.round(viewH*dpr);
+        ctx.setTransform(dpr,0,0,dpr,0,0);
+        scheduleDraw();
+      };
+      resize(); window.addEventListener('resize',resize);
     }
 
-    // ---- Class UI ----
-    function resetClassReferences(){
-      currentClass=0; boxes=[]; selectedBoxIndex=-1;
-      const hasExisting = labels.some(arr=>arr&&arr.length>0);
-      if(hasExisting){
-        if(confirm('You have existing labels that may reference different classes.\n\n• OK: Clear all existing labels\n• Cancel: Keep labels')){
-          labels = new Array(imageMetadata.length).fill(null).map(()=>[]);
-        }
-      }
+    function updateRenderState(){
+      const meta=imageMetadata[currentImageIndex];
+      if(!meta?.img){ RS.dx=RS.dy=0; RS.scaleX=RS.scaleY=1; RS.imgW=RS.imgH=0; return RS; }
+      const img=meta.img; RS.imgW=img.width; RS.imgH=img.height;
+      const sw=RS.imgW*zoom, sh=RS.imgH*zoom;
+      const cx=viewW/2, cy=viewH/2;
+      RS.dx=cx+panX-sw/2; RS.dy=cy+panY-sh/2;
+      RS.scaleX=sw/RS.imgW; RS.scaleY=sh/RS.imgH;
+      return RS;
     }
-    function rebuildClassUI(){ setupClassSelector(); setupClassFilterGrid(); updateClassEditor();
-      if(currentClass>=CLASS_NAMES.length){ currentClass=0 }
-      updateClassSelector();
-      if(labelDatabase.isBuilt){ buildLabelDatabase() }
-      updateUI(); scheduleDraw();
+
+    // FIXED: Proper coordinate transformation using canvas bounding rect
+    const getCanvasPos=e=>{
+      const rect=canvas.getBoundingClientRect();
+      return {x:e.clientX-rect.left, y:e.clientY-rect.top};
+    };
+    
+    function screenToImage(sx,sy){ 
+      updateRenderState(); 
+      if(!RS.imgW||!RS.imgH) return {x:0,y:0}; 
+      return {x:(sx-RS.dx)/RS.scaleX, y:(sy-RS.dy)/RS.scaleY}; 
     }
-    function exportClassFile(){
-      const blob=new Blob([CLASS_NAMES.join('\n')],{type:'text/plain'});
-      const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='classes.txt'; a.click();
+    
+    function imageToScreen(ix,iy){ 
+      updateRenderState(); 
+      if(!RS.imgW||!RS.imgH) return {x:0,y:0}; 
+      return {x:RS.dx+ix*RS.scaleX, y:RS.dy+iy*RS.scaleY}; 
     }
-    function addNewClass(){ CLASS_NAMES.push(`Class ${CLASS_NAMES.length}`); ensureColorsForClasses(); rebuildClassUI(); }
-    function removeClass(i){
-      if(CLASS_NAMES.length<=1){ alert('Cannot remove the last class.'); return }
-      if(confirm(`Remove "${CLASS_NAMES[i]}"? This will affect existing labels.`)){
-        CLASS_NAMES.splice(i,1);
-        for(let k=0;k<labels.length;k++){
-          labels[k] = labels[k].filter(b=>b.cls!==i).map(b=> b.cls>i?({...b,cls:b.cls-1}):b);
-        }
-        boxes = boxes.filter(b=>b.cls!==i).map(b=> b.cls>i?({...b,cls:b.cls-1}):b);
-        rebuildClassUI(); updateBoxList(); scheduleDraw();
-      }
+    
+    function imageToNorm(x1,y1,x2,y2){ 
+      const cx=(x1+x2)/2/RS.imgW, cy=(y1+y2)/2/RS.imgH, w=Math.abs(x2-x1)/RS.imgW, h=Math.abs(y2-y1)/RS.imgH; 
+      return {cls:currentClass, xc:cx, yc:cy, w, h}; 
     }
-    function updateClassName(i,name){ CLASS_NAMES[i] = (name||'').trim() || `Class ${i}`; setupClassSelector(); setupClassFilterGrid(); updateBoxList(); scheduleDraw(); }
-    function toggleClassEditor(){ const sec=$("classManagementSection"), btn=$("editClassesBtn"); if(sec.style.display==='none'){ sec.style.display='block'; btn.textContent='Hide Classes'; updateClassEditor(); } else { sec.style.display='none'; btn.textContent='Edit Classes'; } }
-    function updateClassEditor(){
-      const list=$("classEditList"), cnt=$("classCount");
-      cnt.textContent=CLASS_NAMES.length; list.innerHTML='';
-      CLASS_NAMES.forEach((nm,idx)=>{
-        const el=document.createElement('div'); el.className='class-edit-item';
-        const color=generateColorForIndex(idx);
-        el.innerHTML=`<div class="class-number">${idx}</div>
-          <input type="text" class="class-name-input" value="${nm}"
-                 onchange="YOLOUI._updateClassName(${idx}, this.value)"
-                 onblur="YOLOUI._updateClassName(${idx}, this.value)">
-          <div class="class-color-indicator" style="background:${color}"></div>
-          <button class="remove-class-btn" onclick="YOLOUI._removeClass(${idx})" ${CLASS_NAMES.length<=1?'disabled':''}>×</button>`;
-        list.appendChild(el);
-      });
+    
+    function normToImage(b){ 
+      const cx=b.xc*RS.imgW, cy=b.yc*RS.imgH, w=b.w*RS.imgW, h=b.h*RS.imgH; 
+      return {x1:cx-w/2,y1:cy-h/2,x2:cx+w/2,y2:cy+h/2}; 
     }
+
+    function zoomAt(sx,sy,factor){
+      const before=screenToImage(sx,sy);
+      zoom=Math.max(0.1,Math.min(5,zoom*factor));
+      updateRenderState();
+      const after=imageToScreen(before.x,before.y);
+      panX+=(sx-after.x); panY+=(sy-after.y);
+      updateZoomLevel(); scheduleDraw();
+    }
+
     function setupClassSelector(){
       const sel=$("classSelector"), filterSel=$("filterClass");
       sel.innerHTML=''; filterSel.innerHTML='<option value="">Any Class</option>';
@@ -534,657 +356,368 @@
       });
       updateClassSelector();
     }
-    function updateClassSelector(){ document.querySelectorAll('.class-btn').forEach((b,idx)=>{ b.classList.toggle('active', idx===currentClass) }); }
+    function updateClassSelector(){ document.querySelectorAll('.class-btn').forEach((b,idx)=> b.classList.toggle('active',idx===currentClass)); }
+    function setCurrentClass(i){ currentClass=i; updateClassSelector(); }
+    function toggleClassEditor(){ const sec=$("classManagementSection"), btn=$("editClassesBtn"); if(sec.style.display==='none'){ sec.style.display='block'; btn.textContent='Hide Classes'; updateClassEditor(); } else { sec.style.display='none'; btn.textContent='Edit Classes'; } }
+    function updateClassEditor(){
+      const list=$("classEditList"), cnt=$("classCount");
+      cnt.textContent=CLASS_NAMES.length; list.innerHTML='';
+      CLASS_NAMES.forEach((nm,idx)=>{
+        const el=document.createElement('div'); el.className='class-edit-item';
+        el.innerHTML=`<div class="class-number">${idx}</div>
+          <input type="text" class="class-name-input" value="${nm}"
+                 onchange="YOLOUI._updateClassName(${idx}, this.value)" onblur="YOLOUI._updateClassName(${idx}, this.value)">
+          <div class="class-color-indicator" style="background:${colorOf(idx)}"></div>
+          <button class="remove-class-btn" onclick="YOLOUI._removeClass(${idx})" ${CLASS_NAMES.length<=1?'disabled':''}>×</button>`;
+        list.appendChild(el);
+      });
+    }
+    function addNewClass(){ CLASS_NAMES.push(`Class ${CLASS_NAMES.length}`); ensureColors(); rebuildClassUI(); }
+    function removeClass(i){
+      if(CLASS_NAMES.length<=1){ alert('Cannot remove the last class.'); return }
+      if(confirm(`Remove "${CLASS_NAMES[i]}"?`)){
+        CLASS_NAMES.splice(i,1);
+        for(let k=0;k<labels.length;k++){ labels[k]=(labels[k]||[]).filter(b=>b.cls!==i).map(b=> b.cls>i?({...b,cls:b.cls-1}):b); }
+        boxes=boxes.filter(b=>b.cls!==i).map(b=> b.cls>i?({...b,cls:b.cls-1}):b);
+        rebuildClassUI(); updateBoxList(); scheduleDraw();
+      }
+    }
+    function updateClassName(i,name){ CLASS_NAMES[i]=(name||'').trim()||`Class ${i}`; setupClassSelector(); setupClassFilterGrid(); updateBoxList(); scheduleDraw(); }
     function resetToDefaultClasses(){
       if(!confirm('Reset to default classes?')) return;
       CLASS_NAMES=["Class 0","Class 1","Class 2","Class 3","Class 4","Class 5","Class 6","Class 7","Class 8"];
       COLORS=["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb"];
       rebuildClassUI();
     }
+    function rebuildClassUI(){ setupClassSelector(); setupClassFilterGrid(); updateClassEditor(); if(currentClass>=CLASS_NAMES.length) currentClass=0; updateClassSelector(); if(labelDatabase.isBuilt) buildLabelDatabase(); updateUI(); scheduleDraw(); }
+    function exportClassFile(){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([CLASS_NAMES.join('\n')],{type:'text/plain'})); a.download='classes.txt'; a.click(); }
 
-    // ---- Download bundle ----
     async function downloadBundle(){
-      if(imageMetadata.length===0){ alert('No images loaded'); return }
+      if(!imageMetadata.length){ alert('No images loaded'); return }
       saveCurrentLabels();
       showLoading('Preparing Bundle...','Collecting files...');
-      const zip = new JSZip();
-      const labelsFolder = zip.folder('labels');
-      const imgsToExport = imageMetadata.map((m,idx)=>({m,idx}))
-        .filter(({m})=> statusMap.get(m.name)!=='deleted');
-      for(let i=0;i<imgsToExport.length;i++){
-        const {m,idx} = imgsToExport[i];
-        if(!updateLoading((i/imgsToExport.length)*70, `Packaging labels ${i+1}/${imgsToExport.length}...`)) return;
-        const base = m.name.replace(/\.[^/.]+$/, '');
-        const arr = labels[idx]||[];
-        const content = arr.map(b=>`${b.cls} ${b.xc.toFixed(6)} ${b.yc.toFixed(6)} ${b.w.toFixed(6)} ${b.h.toFixed(6)}`).join('\n');
+      const zip=new JSZip(), labelsFolder=zip.folder('labels');
+      const imgs=imageMetadata.map((m,idx)=>({m,idx})).filter(({m})=> statusMap.get(norm(m.name))!=='deleted');
+      for(let i=0;i<imgs.length;i++){
+        const {m,idx}=imgs[i];
+        if(!updateLoading((i/imgs.length)*70,`Packaging ${i+1}/${imgs.length}...`)) return;
+        const base=m.name.replace(/\.[^/.]+$/,'');
+        const arr=labels[idx]||[];
+        const content=arr.map(b=>`${b.cls} ${b.xc.toFixed(6)} ${b.yc.toFixed(6)} ${b.w.toFixed(6)} ${b.h.toFixed(6)}`).join('\n');
         labelsFolder.file(`${base}.txt`, content);
       }
       zip.file('classes.txt', CLASS_NAMES.join('\n'));
       zip.file('dataset_statistics.txt', buildStatsText());
       exportStatusFilesToZip(zip);
-      const project = { created:new Date().toISOString(), imageCount:imageMetadata.length, currentIndex:currentImageIndex, classes:CLASS_NAMES, status:[...statusMap.entries()] };
-      zip.file('project.json', JSON.stringify(project,null,2));
-
+      const manifest={created:new Date().toISOString(),imageCount:imageMetadata.length,currentIndex:currentImageIndex,classes:CLASS_NAMES,status:[...statusMap.entries()]};
+      zip.file('project.json', JSON.stringify(manifest,null,2));
       updateLoading(95,'Compressing...');
-      try{
-        const blob = await zip.generateAsync({type:'blob', compression:'DEFLATE', compressionOptions:{level:6}});
-        const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='yolo_editor_bundle.zip'; a.click();
-      }catch(e){ alert('Failed to create ZIP'); }
+      try{ const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='yolo_editor_bundle.zip'; a.click(); }catch{ alert('ZIP failed') }
       hideLoading();
     }
+    function exportStatusFilesToZip(zip){
+      const deleted=[...statusMap.entries()].filter(([_,s])=>s==='deleted').map(([n])=>n);
+      const labeled=[...statusMap.entries()].filter(([_,s])=>s==='labeled').map(([n])=>n);
+      const statusJson=JSON.stringify([...statusMap.entries()].map(([name,status])=>({name,status})),null,2);
+      zip.folder('lists').file('deleted_list.txt',deleted.join('\n'));
+      zip.folder('lists').file('labeled_list.txt',labeled.join('\n'));
+      zip.folder('lists').file('image_status.json',statusJson);
+    }
 
-    // ---- Label DB ----
     function buildLabelDatabase(){
-      labelDatabase.imageIndex=[]; labelDatabase.classIndex={};
-      labelDatabase.statusIndex.labeled.clear(); labelDatabase.statusIndex.unlabeled.clear();
-      CLASS_NAMES.forEach((_,id)=>{ labelDatabase.classIndex[id]=new Set() });
+      labelDatabase.imageIndex=[]; labelDatabase.classIndex={}; labelDatabase.statusIndex.labeled.clear(); labelDatabase.statusIndex.unlabeled.clear();
+      CLASS_NAMES.forEach((_,id)=> labelDatabase.classIndex[id]=new Set());
       for(let i=0;i<imageMetadata.length;i++){
-        const arr=labels[i]||[]; const has=arr.length>0; const classes=new Set();
-        arr.forEach(b=>{ classes.add(b.cls); labelDatabase.classIndex[b.cls].add(i); });
-        labelDatabase.imageIndex[i]={ hasLabels:has, classes:classes, boxCount:arr.length, lastModified:Date.now() };
-        if(has){
-          labelDatabase.statusIndex.labeled.add(i);
-          setStatus(imageMetadata[i].name,'labeled');
-        } else {
-          labelDatabase.statusIndex.unlabeled.add(i);
-          if(statusMap.get(imageMetadata[i].name)!=='deleted') setStatus(imageMetadata[i].name,'unlabeled');
-        }
+        const nm=imageMetadata[i].name, arr=labels[i]||[], hasBoxes=arr.length>0, forced=statusMap.get(norm(nm))==='labeled' && !arr.length;
+        const classes=new Set(); arr.forEach(b=>{ classes.add(b.cls); labelDatabase.classIndex[b.cls].add(i); });
+        labelDatabase.imageIndex[i]={hasLabels:hasBoxes||forced,classes,boxCount:arr.length,lastModified:Date.now()};
+        if(hasBoxes||forced){ labelDatabase.statusIndex.labeled.add(i); setStatus(nm,'labeled'); } else { labelDatabase.statusIndex.unlabeled.add(i); if(statusMap.get(norm(nm))!=='deleted') setStatus(nm,'unlabeled'); }
       }
-      labelDatabase.isBuilt=true; labelDatabase.lastUpdate=Date.now();
-      filterCache.clear(); updateDatabaseStatus(); updateFilterStats();
+      labelDatabase.isBuilt=true; labelDatabase.lastUpdate=Date.now(); filterCache.clear(); updateDatabaseStatus(); updateFilterStats();
     }
     function updateImageInDatabase(i){
       if(!labelDatabase.isBuilt||i>=labelDatabase.imageIndex.length) return;
-      const arr=labels[i]||[]; const has=arr.length>0; const newClasses=new Set(); const old=labelDatabase.imageIndex[i];
-      if(old&&old.classes){ old.classes.forEach(c=>{ labelDatabase.classIndex[c].delete(i) }); }
-      arr.forEach(b=>{ newClasses.add(b.cls); if(!labelDatabase.classIndex[b.cls]) labelDatabase.classIndex[b.cls]=new Set(); labelDatabase.classIndex[b.cls].add(i); });
-      labelDatabase.imageIndex[i]={ hasLabels:has, classes:newClasses, boxCount:arr.length, lastModified:Date.now() };
+      const nm=imageMetadata[i].name, arr=labels[i]||[], has=arr.length>0, forced=statusMap.get(norm(nm))==='labeled' && !arr.length;
+      const old=labelDatabase.imageIndex[i]; if(old?.classes) old.classes.forEach(c=>labelDatabase.classIndex[c].delete(i));
+      const cls=new Set(); arr.forEach(b=>{ cls.add(b.cls); if(!labelDatabase.classIndex[b.cls]) labelDatabase.classIndex[b.cls]=new Set(); labelDatabase.classIndex[b.cls].add(i); });
+      labelDatabase.imageIndex[i]={hasLabels:has||forced,classes:cls,boxCount:arr.length,lastModified:Date.now()};
       labelDatabase.statusIndex.labeled.delete(i); labelDatabase.statusIndex.unlabeled.delete(i);
-      if(has){ labelDatabase.statusIndex.labeled.add(i); setStatus(imageMetadata[i].name,'labeled'); } else { labelDatabase.statusIndex.unlabeled.add(i); if(statusMap.get(imageMetadata[i].name)!=='deleted') setStatus(imageMetadata[i].name,'unlabeled'); }
-      if(isFiltered){ invalidateFilterCache(i); }
-      updateFilterStats();
+      if(has||forced){ labelDatabase.statusIndex.labeled.add(i); setStatus(nm,'labeled'); } else { labelDatabase.statusIndex.unlabeled.add(i); if(statusMap.get(norm(nm))!=='deleted') setStatus(nm,'unlabeled'); }
+      if(isFiltered) invalidateFilterCache(); updateFilterStats();
     }
     function invalidateFilterCache(){ filterCache.clear(); if(isFiltered) applyFilters(); }
     function rebuildDatabase(){ buildLabelDatabase(); if(isFiltered) applyFilters(); }
 
-    // ---- Filters ----
-    const intersect=(A,B)=>{ const R=new Set(); for(const x of A){ if(B.has(x)) R.add(x) } return R };
-    const union=(A,B)=>{ const R=new Set(A); for(const x of B) R.add(x); return R };
-    const diff=(A,B)=>{ const R=new Set(); for(const x of A){ if(!B.has(x)) R.add(x) } return R };
+    const intersect=(A,B)=>{const R=new Set(); for(const x of A) if(B.has(x)) R.add(x); return R}
+    const union=(A,B)=>{const R=new Set(A); for(const x of B) R.add(x); return R}
+    const diff=(A,B)=>{const R=new Set(); for(const x of A) if(!B.has(x)) R.add(x); return R}
 
+    // FIXED: Proper filtering with status list and deleted list
     function applyFilters(){
       if(!labelDatabase.isBuilt){ alert('Database not ready.'); return }
-      const statusF=$("filterStatus").value; const classF=$("filterClass").value; const op=$("filterOperator").value;
-      const key=`status:${statusF}|class:${classF}|multi:${JSON.stringify(classFilterState)}|op:${op}|hidePrev:${hidePrevLabeled}`;
-      if(filterCache.has(key)){
-        currentFilteredIndices=filterCache.get(key);
-        isFiltered=currentFilteredIndices.length<imageMetadata.length;
-        updateFilterResults(); updateUI(); return;
+      const s=$("filterStatus").value, c=$("filterClass").value, op=$("filterOperator").value;
+      const key=`s:${s}|c:${c}|m:${JSON.stringify(classFilterState)}|op:${op}|hide:${hidePrevLabeled}`;
+      if(filterCache.has(key)){ currentFilteredIndices=filterCache.get(key); isFiltered=currentFilteredIndices.length<imageMetadata.length; updateFilterResults(); updateUI(); return; }
+      
+      // Start with all indices
+      let res=new Set(Array.from({length:imageMetadata.length},(_,i)=>i));
+      
+      // Apply status filter
+      if(s){ res=(op==='AND')?intersect(res,labelDatabase.statusIndex[s]):union(res,labelDatabase.statusIndex[s]); }
+      
+      // Apply class filter
+      if(c!==''){ const ci=parseInt(c); res=(op==='AND'||!s)?intersect(res,labelDatabase.classIndex[ci]):union(res,labelDatabase.classIndex[ci]); }
+      
+      // Apply multi-class filter
+      const inc=Object.entries(classFilterState).filter(([_,st])=>st==='include').map(([k])=>+k);
+      const exc=Object.entries(classFilterState).filter(([_,st])=>st==='exclude').map(([k])=>+k);
+      if(inc.length){ const U=new Set(); inc.forEach(ci=>labelDatabase.classIndex[ci].forEach(i=>U.add(i))); res=intersect(res,U); }
+      if(exc.length){ const X=new Set(); exc.forEach(ci=>labelDatabase.classIndex[ci].forEach(i=>X.add(i))); res=diff(res,X); }
+      
+      // FIXED: Apply hide previously labeled filter
+      if(hidePrevLabeled){ 
+        const H=new Set(); 
+        for(let i=0;i<imageMetadata.length;i++){ 
+          const status = statusMap.get(norm(imageMetadata[i].name));
+          if(status === 'labeled') H.add(i);
+        } 
+        res=diff(res,H);
       }
-      let result=new Set(Array.from({length:imageMetadata.length},(_,i)=>i));
-      if(statusF){ result = (op==='AND') ? intersect(result, labelDatabase.statusIndex[statusF]) : union(result, labelDatabase.statusIndex[statusF]); }
-      if(classF!==''){ const c=parseInt(classF); result = (op==='AND'||!statusF) ? intersect(result, labelDatabase.classIndex[c]) : union(result, labelDatabase.classIndex[c]); }
-
-      const include = Object.entries(classFilterState).filter(([_,s])=>s==='include').map(([c])=>parseInt(c));
-      const exclude = Object.entries(classFilterState).filter(([_,s])=>s==='exclude').map(([c])=>parseInt(c));
-      if(include.length>0){ const inc=new Set(); include.forEach(c=> labelDatabase.classIndex[c].forEach(i=>inc.add(i)) ); result = intersect(result, inc); }
-      if(exclude.length>0){ const exc=new Set(); exclude.forEach(c=> labelDatabase.classIndex[c].forEach(i=>exc.add(i)) ); result = diff(result, exc); }
-
-      if(hidePrevLabeled){
-        const hideSet=new Set();
-        for(let i=0;i<imageMetadata.length;i++){
-          const nm=imageMetadata[i].name;
-          if(statusMap.get(nm)==='labeled') hideSet.add(i);
-        }
-        result = diff(result, hideSet);
-      }
-
-      const deletedSet = getDeletedSet();
-      const toRemove = new Set();
+      
+      // FIXED: Apply deleted filter - remove all deleted images from results
+      const del=getDeletedSet(); 
+      const rm=new Set(); 
       for(let i=0;i<imageMetadata.length;i++){
-        if(deletedSet.has(imageMetadata[i].name)) toRemove.add(i);
+        if(del.has(norm(imageMetadata[i].name))) rm.add(i);
       }
-      result = diff(result, toRemove);
-
-      currentFilteredIndices = Array.from(result).sort((a,b)=>a-b);
-      filterCache.set(key, currentFilteredIndices);
-      isFiltered = currentFilteredIndices.length < imageMetadata.length;
+      res=diff(res,rm);
+      
+      currentFilteredIndices=[...res].sort((a,b)=>a-b); 
+      filterCache.set(key,currentFilteredIndices); 
+      isFiltered=currentFilteredIndices.length<imageMetadata.length;
+      
       if(isFiltered && !currentFilteredIndices.includes(currentImageIndex)){
-        if(currentFilteredIndices.length>0){ currentImageIndex=currentFilteredIndices[0]; loadCurrentImage(); }
-        else { alert('No images match the current filters.'); clearFilters(); return; }
+        if(currentFilteredIndices.length){ currentImageIndex=currentFilteredIndices[0]; loadCurrentImage(); } 
+        else { alert('No images match filters'); clearFilters(); return; }
       }
       updateFilterResults(); updateUI(); updateQuickNavigation();
     }
-
-    function toggleHidePrevLabeled(){
-      hidePrevLabeled = !!$("hidePrevLabeled").checked;
-      applyFilters();
-    }
-
-    function clearFilters(){
-      $("filterStatus").value=''; $("filterClass").value=''; $("filterOperator").value='AND';
-      $("hidePrevLabeled").checked=false; hidePrevLabeled=false;
-      classFilterState={}; updateClassFilterGrid();
-      currentFilteredIndices=[]; isFiltered=false; updateFilterResults(); updateUI(); updateQuickNavigation();
-    }
-
+    
+    function toggleHidePrevLabeled(){ hidePrevLabeled=!!$("hidePrevLabeled").checked; applyFilters(); }
+    function clearFilters(){ $("filterStatus").value=''; $("filterClass").value=''; $("filterOperator").value='AND'; $("hidePrevLabeled").checked=false; hidePrevLabeled=false; classFilterState={}; updateClassFilterGrid(); currentFilteredIndices=[]; isFiltered=false; updateFilterResults(); updateUI(); updateQuickNavigation(); }
     function setupClassFilterGrid(){
       const grid=$("classFilterGrid"); grid.innerHTML=''; classFilterState={};
       CLASS_NAMES.forEach((_,idx)=>{
-        const b=document.createElement('button'); b.className='class-filter-btn'; b.textContent=`${idx}`; b.title=CLASS_NAMES[idx];
+        const b=document.createElement('button'); b.className='class-filter-btn'; b.textContent=idx; b.title=CLASS_NAMES[idx];
         b.onclick=(e)=>toggleClassFilter(idx, e.shiftKey); grid.appendChild(b);
       });
       updateClassFilterGrid();
     }
-    function toggleClassFilter(id, exclude=false){
+    function toggleClassFilter(id,exclude=false){
       const cur=classFilterState[id]||null;
-      classFilterState[id] = exclude ? (cur==='exclude'?null:'exclude') : (cur==='include'?null:'include');
-      updateClassFilterGrid();
-      if(Object.values(classFilterState).some(s=>s!==null)) applyFilters(); else if(isFiltered) applyFilters();
+      classFilterState[id]=exclude ? (cur==='exclude'?null:'exclude') : (cur==='include'?null:'include');
+      updateClassFilterGrid(); applyFilters();
     }
-    function updateClassFilterGrid(){
-      document.querySelectorAll('.class-filter-btn').forEach((b,idx)=>{
-        const st=classFilterState[idx]||null; b.className='class-filter-btn';
-        if(st==='include') b.classList.add('included'); else if(st==='exclude') b.classList.add('excluded');
-      });
-    }
+    function updateClassFilterGrid(){ document.querySelectorAll('.class-filter-btn').forEach((b,idx)=>{ const st=classFilterState[idx]||null; b.className='class-filter-btn'; if(st==='include') b.classList.add('included'); else if(st==='exclude') b.classList.add('excluded'); }); }
 
-    // ---- Navigation ----
-    const getValidIndices = ()=> {
-      const base = isFiltered ? currentFilteredIndices : Array.from({length:imageMetadata.length},(_,i)=>i);
-      const deletedSet=getDeletedSet();
-      return base.filter(i=> !deletedSet.has(imageMetadata[i].name));
-    };
-    const getCurrentImageStatus = ()=>{ if(!isFiltered) return 'normal'; return currentFilteredIndices.includes(currentImageIndex)?'filtered-in':'filtered-out' };
+    const getValidIndices=()=>{ const base=isFiltered?currentFilteredIndices:Array.from({length:imageMetadata.length},(_,i)=>i); const del=getDeletedSet(); return base.filter(i=>!del.has(norm(imageMetadata[i].name))); };
+    const getCurrentImageStatus=()=> !isFiltered?'normal':(currentFilteredIndices.includes(currentImageIndex)?'filtered-in':'filtered-out');
 
-    async function previousImage(){
-      saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
-      if(isFiltered && getCurrentImageStatus()==='filtered-out'){
-        const prev=currentFilteredIndices.filter(i=>i<currentImageIndex).pop();
-        if(prev!==undefined){ currentImageIndex=prev; await loadCurrentImage(); updateUI(); }
-      } else {
-        const valid=getValidIndices(); const pos=valid.indexOf(currentImageIndex);
-        if(pos>0){ currentImageIndex=valid[pos-1]; await loadCurrentImage(); updateUI(); }
-      }
-    }
-    async function nextImage(){
-      saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
-      if(isFiltered && getCurrentImageStatus()==='filtered-out'){
-        const nxt=currentFilteredIndices.find(i=>i>currentImageIndex);
-        if(nxt!==undefined){ currentImageIndex=nxt; await loadCurrentImage(); updateUI(); }
-      } else {
-        const valid=getValidIndices(); const pos=valid.indexOf(currentImageIndex);
-        if(pos<valid.length-1){ currentImageIndex=valid[pos+1]; await loadCurrentImage(); updateUI(); }
-      }
-    }
-    async function jumpToIndex(rel){
-      const valid=getValidIndices();
-      if(rel>=0 && rel<valid.length){ saveCurrentLabels(); updateImageInDatabase(currentImageIndex); currentImageIndex=valid[rel]; await loadCurrentImage(); updateUI(); }
-    }
-    function goToImage(){
-      const inp=$("pageInput"); const n=parseInt(inp.value); const valid=getValidIndices();
-      if(n>=1 && n<=valid.length){ jumpToIndex(n-1); inp.value=''; } else { alert(`Enter a number between 1 and ${valid.length}`) }
-    }
-
-    // ---- Image & label loading ----
-    function updateDatabaseStatus(){
-      const ind=$("dbStatusIndicator"), txt=$("dbStatusText");
-      if(labelDatabase.isBuilt){ ind.className='status-indicator status-ready'; txt.textContent=`Ready (${imageMetadata.length} images)`; }
-      else if(imageMetadata.length>0){ ind.className='status-indicator status-building'; txt.textContent='Building database...'; }
-      else { ind.className='status-indicator status-error'; txt.textContent='No images loaded'; }
-    }
-    function updateFilterStats(){
-      const total=imageMetadata.length, labeled=labelDatabase.isBuilt?labelDatabase.statusIndex.labeled.size:0, showing=getValidIndices().length;
-      $("statTotal").textContent=total; $("statLabeled").textContent=labeled; $("statFiltered").textContent=showing;
-    }
-    function updateQuickNavigation(){
-      const q=$("quickNav"); q.innerHTML=''; const valid=getValidIndices(); const total=valid.length; if(total<=10) return;
-      const jumps=[{label:'First',index:0},{label:'10%',index:Math.floor(total*.1)},{label:'25%',index:Math.floor(total*.25)},{label:'50%',index:Math.floor(total*.5)},{label:'75%',index:Math.floor(total*.75)},{label:'90%',index:Math.floor(total*.9)},{label:'Last',index:total-1}];
-      jumps.forEach(j=>{ const b=document.createElement('button'); b.className='quick-nav-btn'; b.textContent=j.label; b.onclick=()=>jumpToIndex(j.index); q.appendChild(b); });
-    }
-
-    async function handleImageUpload(e){
-      const files=Array.from(e.target.files);
-      await routeUploads(files);
-      e.target.value='';
-    }
+    async function previousImage(){ saveCurrentLabels(); updateImageInDatabase(currentImageIndex); const st=getCurrentImageStatus(); if(isFiltered && st==='filtered-out'){ const prev=currentFilteredIndices.filter(i=>i<currentImageIndex).pop(); if(prev!==undefined){ currentImageIndex=prev; await loadCurrentImage(); updateUI(); } } else { const v=getValidIndices(); const p=v.indexOf(currentImageIndex); if(p>0){ currentImageIndex=v[p-1]; await loadCurrentImage(); updateUI(); } } }
+    async function nextImage(){ saveCurrentLabels(); updateImageInDatabase(currentImageIndex); const st=getCurrentImageStatus(); if(isFiltered && st==='filtered-out'){ const nxt=currentFilteredIndices.find(i=>i>currentImageIndex); if(nxt!==undefined){ currentImageIndex=nxt; await loadCurrentImage(); updateUI(); } } else { const v=getValidIndices(); const p=v.indexOf(currentImageIndex); if(p<v.length-1){ currentImageIndex=v[p+1]; await loadCurrentImage(); updateUI(); } } }
+    async function jumpToIndex(rel){ const v=getValidIndices(); if(rel>=0&&rel<v.length){ saveCurrentLabels(); updateImageInDatabase(currentImageIndex); currentImageIndex=v[rel]; await loadCurrentImage(); updateUI(); } }
+    function goToImage(){ const n=parseInt($("pageInput").value); const v=getValidIndices(); if(n>=1&&n<=v.length){ jumpToIndex(n-1); $("pageInput").value=''; } else alert(`Enter 1..${v.length}`) }
 
     async function routeUploads(files){
-      const imgFiles = files.filter(f=>f.type.startsWith('image/'));
-      const labelFiles = files.filter(f=> /\.txt$/i.test(f.name) && !/classes\.(txt|names)$/i.test(f.name) );
-      const statusFiles = files.filter(f=> /\.(json|txt)$/i.test(f.name) && /(image_status|deleted_list|labeled_list)/i.test(f.name));
-      const classFiles = files.filter(f=> /(classes\.txt|classes\.names)$/i.test(f.name));
-      if(imgFiles.length>0) await loadImagesOptimized(imgFiles);
-      if(labelFiles.length>0) await loadLabelsOptimized(labelFiles);
-      if(statusFiles.length>0) await handleStatusListUploadFiles(statusFiles);
-      if(classFiles.length>0) await handleClassesFile(classFiles[0]);
+      const imgs=files.filter(f=>f.type.startsWith('image/'));
+      const lbls=files.filter(f=>/\.txt$/i.test(f.name)&&!/classes\.(txt|names)$/i.test(f.name));
+      const stats=files.filter(f=>/\.(json|txt)$/i.test(f.name)&&/(image_status|deleted_list|labeled_list)/i.test(f.name));
+      const cls=files.filter(f=>/(classes\.txt|classes\.names)$/i.test(f.name));
+      if(imgs.length) await loadImagesOptimized(imgs);
+      if(lbls.length) await loadLabelsOptimized(lbls);
+      if(stats.length) await handleStatusListUploadFiles(stats);
+      if(cls.length) await handleClassesFile(cls[0]);
     }
 
     async function loadImagesOptimized(files){
       showLoading('Analyzing Images...','Preparing image metadata...');
       imageMetadata=[]; imageCache.clear(); labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false;
       for(let i=0;i<files.length;i++){
-        if(!updateLoading((i/files.length)*50, `Analyzing ${i+1}/${files.length} files...`)) return;
-        const f=files[i];
-        imageMetadata.push({ name:f.name, file:f, size:f.size, loaded:false, img:null });
-        if(i%50===0) await new Promise(r=>setTimeout(r,1));
+        if(!updateLoading((i/files.length)*50,`Analyzing ${i+1}/${files.length}...`)) return;
+        const f=files[i]; imageMetadata.push({name:f.name,file:f,size:f.size,loaded:false,img:null});
+        if(i%50===0) await new Promise(r=>setTimeout(r,0));
       }
-      const deletedSet=getDeletedSet();
-      if(deletedSet.size>0){ imageMetadata = imageMetadata.filter(meta => !deletedSet.has(meta.name)); }
+      
+      // FIXED: Filter out deleted images during initial load
+      const del=getDeletedSet(); 
+      if(del.size){
+        imageMetadata=imageMetadata.filter(m=>!del.has(norm(m.name)));
+      }
+      
       imageMetadata.sort((a,b)=>a.name.localeCompare(b.name));
       labels=new Array(imageMetadata.length).fill(null).map(()=>[]);
       updateLoading(75,'Building label database...'); buildLabelDatabase();
-      await loadImageAtIndex(0);  // prime first image
+      await loadImageAtIndex(0);
       updateLoading(100,'Complete!');
-      setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats(); },300);
+      setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats(); },200);
     }
 
-    async function loadImageAtIndex(i){
-      if(i<0||i>=imageMetadata.length) return null;
-      const meta=imageMetadata[i]; const cached=imageCache.get(i);
-      if(cached){ meta.img=cached; meta.loaded=true; scheduleDraw(); return cached }
-      return new Promise((resolve)=>{
-        const img=new Image(); const r=new FileReader();
-        r.onload=e=>{
-          img.onload=()=>{ 
-            meta.img=img; meta.loaded=true; imageCache.set(i,img); 
-            $("loadedImages").textContent=imageCache.size(); 
-            scheduleDraw();                       /* <-- force redraw on load */
-            resolve(img);
-          };
-          img.onerror=()=>resolve(null);
-          img.src=e.target.result;
-        };
-        r.onerror=()=>resolve(null);
-        r.readAsDataURL(meta.file);
-      });
+    async function loadLabelsOptimized(files){
+      if(!imageMetadata.length){ alert('Upload images first.'); return }
+      showLoading('Loading Labels...','Processing files...');
+      labels=new Array(imageMetadata.length).fill(null).map(()=>[]);
+      imageMetadata.forEach(m=>{ m.labelFile=null; m.matchStrategy=null; m.labelLoadTime=null; });
+      let ok=0;
+      for(let i=0;i<files.length;i++){
+        if(!updateLoading((i/files.length)*80,`Processing ${files[i].name}...`)) return;
+        const lf=files[i]; const ln=lf.name.replace(/\.txt$/i,''), text=await lf.text(), parsed=parseLabelFile(text);
+        let found=-1, strat='';
+        for(let k=0;k<imageMetadata.length;k++){ const im=imageMetadata[k].name.replace(/\.[^/.]+$/,''); if(im===ln){found=k;strat='exact';break} }
+        if(found===-1){ for(let k=0;k<imageMetadata.length;k++){ if(norm(imageMetadata[k].name.replace(/\.[^/.]+$/,''))===norm(ln)){found=k;strat='lower';break} } }
+        if(found!==-1){ labels[found]=parsed; ok++; imageMetadata[found].labelFile=lf.name; imageMetadata[found].matchStrategy=strat; imageMetadata[found].labelLoadTime=Date.now(); if(parsed.length>0) setStatus(imageMetadata[found].name,'labeled'); }
+        if(i%50===0) await new Promise(r=>setTimeout(r,0));
+      }
+      updateLoading(90,'Building database...'); buildLabelDatabase();
+      updateLoading(100,`Loaded ${ok} labels.`);
+      setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats(); },200);
     }
 
-    async function handleClassesFile(f){
-      showLoading('Loading Classes...','Processing class definitions...');
-      const res = await (async function(file){
-        return new Promise((resolve)=>{
-          const r=new FileReader();
-          r.onload=ev=>{
-            try{
-              const content=ev.target.result.trim();
-              const lines=content.split('\n').filter(l=>l.trim());
-              if(lines.length>0){
-                CLASS_NAMES = lines.map((ln,i)=> ln.trim() || `Class ${i}`);
-                COLORS=["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb"]; ensureColorsForClasses();
-                resetClassReferences(); rebuildClassUI();
-                resolve({success:true,count:CLASS_NAMES.length});
-              } else { resolve({success:false,reason:'Empty file'}) }
-            } catch(err){ resolve({success:false,reason:err.message}) }
-          };
-          r.onerror=()=>resolve({success:false,reason:'File read error'});
-          r.readAsText(file);
-        });
-      })(f);
-      hideLoading();
-      if(!res.success) alert(`Failed to load classes: ${res.reason}`);
+    async function handleClassesFile(file){
+      try{
+        const text=await file.text(); const lines=text.trim().split('\n').filter(l=>l.trim());
+        if(!lines.length){ alert('Empty classes file.'); return }
+        CLASS_NAMES=lines.map((l,i)=>l.trim()||`Class ${i}`);
+        COLORS=["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb"];
+        ensureColors(); rebuildClassUI(); alert(`Loaded ${CLASS_NAMES.length} classes.`);
+      }catch{ alert('Failed to load classes file.') }
+    }
+    function parseLabelFile(text){
+      return text.trim().split('\n').map(line=>{
+        const p=line.trim().split(/\s+/).map(parseFloat);
+        if(p.length===5&&p.every(n=>!isNaN(n))) return {cls:Math.floor(p[0]),xc:p[1],yc:p[2],w:p[3],h:p[4]};
+      }).filter(Boolean);
+    }
+
+    async function loadImageAtIndex(idx){
+      if(idx<0||idx>=imageMetadata.length) return;
+      const meta=imageMetadata[idx]; let img=imageCache.get(idx);
+      if(!img){
+        img=new Image(); const blob=meta.file; img.src=URL.createObjectURL(blob);
+        await new Promise((res,rej)=>{ img.onload=()=>res(); img.onerror=()=>rej('Load failed'); });
+        imageCache.set(idx,img); meta.loaded=true; meta.img=img;
+      }
+      boxes=[...labels[idx]||[]]; updateBoxList(); updateZoomLevel(); scheduleDraw();
+      $("loadedImages").textContent=imageCache.size();
+    }
+    async function loadCurrentImage(){ await loadImageAtIndex(currentImageIndex); }
+
+    function updateFilterStats(){
+      const all=imageMetadata.length, filtered=currentFilteredIndices.length, lab=labelDatabase.statusIndex.labeled.size;
+      $("statTotal").textContent=all; $("statLabeled").textContent=lab; $("statFiltered").textContent=isFiltered?filtered:all;
     }
 
     async function handleStatusListUploadFiles(files){
       try{
         for(const f of files){
-          const text = await f.text();
+          const text=await f.text();
           if(/image_status\.json$/i.test(f.name)){
-            const arr = JSON.parse(text);
-            if(Array.isArray(arr)) arr.forEach(rec=>{ if(rec?.name && rec?.status) statusMap.set(rec.name, rec.status); });
+            const arr=JSON.parse(text); if(Array.isArray(arr)) arr.forEach(r=>{ if(r?.name&&r?.status) statusMap.set(norm(r.name),r.status) });
           } else if(/deleted_list\.txt$/i.test(f.name)){
             text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'deleted'));
           } else if(/labeled_list\.txt$/i.test(f.name)){
             text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'labeled'));
-          } else {
-            if(f.name.toLowerCase().endsWith('.txt')){
-              text.split(/\r?\n/).forEach(line=>{
-                const parts=line.split(',').map(s=>s.trim());
-                if(parts.length===2){ const [n,st]=parts; if(n && st) statusMap.set(n, st.toLowerCase()); }
-              });
-            }
+          } else if(f.name.toLowerCase().endsWith('.txt')){
+            text.split(/\r?\n/).forEach(line=>{
+              const p=line.split(',').map(s=>s.trim());
+              if(p.length===2){ const [n,st]=p; if(n&&st) statusMap.set(n,st.toLowerCase()); }
+            });
           }
         }
         persistStatus();
-        if(imageMetadata.length>0){
-          const deleted = getDeletedSet();
-          const before = imageMetadata.length;
-          imageMetadata = imageMetadata.filter(m=>!deleted.has(m.name));
-          if(imageMetadata.length !== before){
-            labels = labels.slice(0, imageMetadata.length);
-          }
+        if(imageMetadata.length){
+          const del=getDeletedSet(); const before=imageMetadata.length;
+          imageMetadata=imageMetadata.filter(m=>!del.has(norm(m.name)));
+          if(imageMetadata.length!==before) labels=labels.slice(0,imageMetadata.length);
           applyDeletedFilter(); await loadCurrentImage(); updateQuickNavigation(); updateUI();
         }
         alert('Status list(s) loaded');
-      }catch(e){ console.error(e); alert('Failed to load status list'); }
+      }catch{ alert('Failed to load status list'); }
     }
 
-    async function handleLabelUpload(e){ const files=Array.from(e.target.files); await loadLabelsOptimized(files); e.target.value=''; }
-    async function loadLabelsOptimized(files){
-      if(imageMetadata.length===0){ alert('Upload images first.'); return }
-      showLoading('Loading Labels...','Processing label files...');
-      labels=new Array(imageMetadata.length).fill(null).map(()=>[]);
-      imageMetadata.forEach(m=>{ m.labelFile=null; m.matchStrategy=null; m.labelLoadTime=null; });
-      let ok=0;
-      for(let i=0;i<files.length;i++){
-        if(!updateLoading((i/files.length)*80, `Processing ${files[i].name}...`)) return;
-        const res=await processLabelFileSimple(files[i]); if(res.success) ok++;
-      }
-      updateLoading(90,'Rebuilding database...'); buildLabelDatabase();
-      await loadCurrentImage();
-      updateLoading(100,'Complete!');
-      setTimeout(()=>{ hideLoading(); updateUI(); updateFilterStats(); alert(`Labels loaded: ${ok} of ${files.length}`); },300);
+    function applyDeletedFilter(){
+      const del=getDeletedSet(); if(!del.size) return;
+      const nm=[], nl=[];
+      for(let i=0;i<imageMetadata.length;i++){ if(!del.has(norm(imageMetadata[i].name))){ nm.push(imageMetadata[i]); nl.push(labels[i]||[]); } }
+      if(nm.length===imageMetadata.length) return;
+      imageMetadata=nm; labels=nl;
+      if(!imageMetadata.length) currentImageIndex=0; else if(currentImageIndex>=imageMetadata.length) currentImageIndex=imageMetadata.length-1;
+      labelDatabase.isBuilt=false; buildLabelDatabase(); updateFilterStats(); updateDatabaseStatus();
     }
 
-    function parseLabelFile(content){
-      const lines=content.trim().split('\n').filter(l=>l.trim());
-      return lines.map(l=>{
-        const p=l.trim().split(/\s+/); if(p.length!==5) return null;
-        const [cls,xc,yc,w,h]=p.map(Number);
-        if([cls,xc,yc,w,h].some(Number.isNaN)) return null;
-        if(xc<0||xc>1||yc<0||yc>1||w<=0||w>1||h<=0||h>1) return null;
-        return {cls,xc,yc,w,h};
-      }).filter(Boolean);
-    }
-
-    async function processLabelFileSimple(file){
-      return new Promise((resolve)=>{
-        const r=new FileReader();
-        r.onload=e=>{
-          try{
-            const content=e.target.result; const fn=file.name; const base=fn.replace(/\.txt$/i,'');
-            let idx=-1, type='';
-            for(let i=0;i<imageMetadata.length;i++){
-              const bn=imageMetadata[i].name.replace(/\.[^/.]+$/,'');
-              if(bn===base){ idx=i; type='exact'; break; }
-            }
-            if(idx===-1){
-              for(let i=0;i<imageMetadata.length;i++){
-                const bn=imageMetadata[i].name.replace(/\.[^/.]+$/,'').toLowerCase();
-                if(bn===base.toLowerCase()){ idx=i; type='case-insensitive'; break; }
-              }
-            }
-            if(idx===-1){ resolve({success:false,fileName:fn,reason:'No matching image found'}); return }
-            const parsed=parseLabelFile(content); labels[idx]=parsed;
-            const meta=imageMetadata[idx]; meta.labelFile=fn; meta.matchStrategy=type; meta.labelLoadTime=Date.now();
-            if(parsed.length>0) setStatus(meta.name,'labeled'); else if(statusMap.get(meta.name)!=='deleted') setStatus(meta.name,'unlabeled');
-            resolve({success:true,fileName:fn,imageIndex:idx,imageName:meta.name,labelCount:parsed.length});
-          } catch(err){
-            resolve({success:false,fileName:file.name,reason:`Parse error: ${err.message}`});
-          }
-        };
-        r.onerror=()=>resolve({success:false,fileName:file.name,reason:'File read error'});
-        r.readAsText(file);
-      });
-    }
-
-    async function loadCurrentImage(){
-      if(imageMetadata.length===0) return;
+    function deleteCurrentImage(){
+      if(!imageMetadata.length) return;
       const meta=imageMetadata[currentImageIndex];
-      if(!meta.loaded) await loadImageAtIndex(currentImageIndex); /* <-- await ensures image is ready */
-      boxes=[]; selectedBoxIndex=-1;
-      boxes=[...(labels[currentImageIndex]||[])];
-      fitToScreen(); updateBoxList(); scheduleDraw();
-    }
-
-    function setCurrentClass(i){ currentClass=i; updateClassSelector(); }
-
-    // ---- Keyboard & mouse ----
-    function onKeyDown(e){
-      if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.type==='checkbox') return;
-      if(e.key==='Delete'||e.key==='Backspace'){
-        if(selectedBoxIndex!==-1){
-          saveState(); boxes.splice(selectedBoxIndex,1); selectedBoxIndex=-1; updateBoxList(); scheduleDraw();
-          saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
-        }
-      } else if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A'){ e.preventDefault(); previousImage(); }
-      else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D'){ e.preventDefault(); nextImage(); }
-      else if(e.key>='0'&&e.key<='9'){
-        const ci=parseInt(e.key); if(ci<CLASS_NAMES.length){
-          if(selectedBoxIndex!==-1){
-            boxes[selectedBoxIndex].cls=ci; updateBoxList(); scheduleDraw();
-            saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
-          } else { setCurrentClass(ci) }
-        }
-      } else if(e.key==='Tab'){
-        e.preventDefault();
-        currentClass = e.shiftKey ? (currentClass-1+CLASS_NAMES.length)%CLASS_NAMES.length : (currentClass+1)%CLASS_NAMES.length;
-        setCurrentClass(currentClass);
-      } else if(e.key==='v'||e.key==='V'){ toggleBoxes(); }
-      else if(e.key==='f'||e.key==='F'){ fitToScreen(); }
-      else if(e.key==='r'||e.key==='R'){ resetZoom(); }
-      else if(e.key==='+'||e.key==='='){ zoomIn(); }
-      else if(e.key==='-'){ zoomOut(); }
-      else if(e.ctrlKey&&e.key==='z'){ e.preventDefault(); undo(); }
-      else if(e.ctrlKey&&e.key==='s'){ e.preventDefault(); saveProject(); }
-    }
-
-    let isDragging=false, dragMode=null, dragStart={x:0,y:0}, resizeHandle=null, isPanning=false;
-    function getBoxAtPoint(x,y){
-      const p=screenToImage(x,y);
-      for(let i=boxes.length-1;i>=0;i--){
-        const b=normalizedToImage(boxes[i]);
-        if(p.x>=b.x1&&p.x<=b.x2&&p.y>=b.y1&&p.y<=b.y2) return i;
-      }
-      return -1;
-    }
-    function getResizeHandle(x,y,idx){
-      if(idx===-1) return null;
-      const b=normalizedToImage(boxes[idx]);
-      const hs=[{x:b.x1,y:b.y1,h:'nw'},{x:b.x2,y:b.y1,h:'ne'},{x:b.x1,y:b.y2,h:'sw'},{x:b.x2,y:b.y2,h:'se'}];
-      for(const h of hs){ const s=imageToScreen(h.x,h.y); if(Math.abs(x-s.x)<=HANDLE_SIZE && Math.abs(y-s.y)<=HANDLE_SIZE) return h.h }
-      return null;
-    }
-
-    function onMouseDown(e){
-      const {x,y}=getCanvasCoordinates(e);
-      isDragging=true; dragStart={x,y};
-      if(e.button===2){ dragMode='pan'; isPanning=true; canvas.style.cursor='grabbing'; return }
-      if(selectedBoxIndex!==-1){
-        const h=getResizeHandle(x,y,selectedBoxIndex);
-        if(h){ dragMode='resize'; resizeHandle=h; canvas.style.cursor='nw-resize'; return }
-      }
-      const idx=getBoxAtPoint(x,y);
-      if(idx!==-1){ selectedBoxIndex=idx; dragMode='move'; canvas.style.cursor='move'; updateBoxList(); scheduleDraw(); return }
-      selectedBoxIndex=-1; dragMode='create'; canvas.style.cursor='crosshair'; updateBoxList();
-    }
-
-    function onMouseMove(e){
-      const {x,y}=getCanvasCoordinates(e);
-      if(!isDragging){
-        if(selectedBoxIndex!==-1){
-          const h=getResizeHandle(x,y,selectedBoxIndex);
-          if(h){ canvas.style.cursor='nw-resize'; return }
-        }
-        const idx=getBoxAtPoint(x,y); canvas.style.cursor=idx!==-1?'move':'crosshair'; return;
-      }
-      const dx=x-dragStart.x, dy=y-dragStart.y;
-      if(dragMode==='pan'){
-        panX+=dx; panY+=dy; dragStart={x,y}; scheduleDraw();
-      } else if(dragMode==='move'&&selectedBoxIndex!==-1){
-        const s=screenToImage(dragStart.x,dragStart.y), c=screenToImage(x,y);
-        const meta=imageMetadata[currentImageIndex];
-        if(meta?.img){
-          const img=meta.img; const ndx=(c.x-s.x)/img.width, ndy=(c.y-s.y)/img.height;
-          boxes[selectedBoxIndex].xc+=ndx; boxes[selectedBoxIndex].yc+=ndy;
-        }
-        dragStart={x,y}; scheduleDraw();
-      } else if(dragMode==='resize'&&selectedBoxIndex!==-1){
-        const ip=screenToImage(x,y); const meta=imageMetadata[currentImageIndex]; if(!meta?.img) return;
-        const cur=boxes[selectedBoxIndex]; const rb=normalizedToImage(cur); let nb={...rb};
-        if(resizeHandle.includes('n')) nb.y1=ip.y;
-        if(resizeHandle.includes('s')) nb.y2=ip.y;
-        if(resizeHandle.includes('w')) nb.x1=ip.x;
-        if(resizeHandle.includes('e')) nb.x2=ip.x;
-        const x1=Math.min(nb.x1,nb.x2), y1=Math.min(nb.y1,nb.y2), x2=Math.max(nb.x1,nb.x2), y2=Math.max(nb.y1,nb.y2);
-        if(x2-x1>5 && y2-y1>5){ const n=imageToNormalized(x1,y1,x2,y2); boxes[selectedBoxIndex] = {...n, cls: cur.cls}; }
-        scheduleDraw();
-      } else if(dragMode==='create'){
-        scheduleDraw();
-        const s=screenToImage(dragStart.x,dragStart.y), c=screenToImage(x,y);
-        const x1=Math.min(s.x,c.x), y1=Math.min(s.y,c.y), x2=Math.max(s.x,c.x), y2=Math.max(s.y,c.y);
-        const ss=imageToScreen(x1,y1), ee=imageToScreen(x2,y2);
-        ctx.strokeStyle=COLORS[currentClass]||generateColorForIndex(currentClass); ctx.lineWidth=2; ctx.setLineDash([5,5]);
-        ctx.strokeRect(ss.x,ss.y, ee.x-ss.x, ee.y-ss.y); ctx.setLineDash([]);
+      if(confirm(`Delete "${meta.name}"?`)){
+        setStatus(meta.name,'deleted');
+        applyDeletedFilter();
+        if(imageMetadata.length) loadCurrentImage(); else updateUI();
       }
     }
-
-    function onMouseUp(e){
-      if(!isDragging) return;
-      const {x,y}=getCanvasCoordinates(e);
-      if(dragMode==='create'){
-        const s=screenToImage(dragStart.x,dragStart.y), c=screenToImage(x,y);
-        const x1=Math.min(s.x,c.x), y1=Math.min(s.y,c.y), x2=Math.max(s.x,c.x), y2=Math.max(s.y,c.y);
-        if(x2-x1>5 && y2-y1>5){
-          saveState(); const nb=imageToNormalized(x1,y1,x2,y2); boxes.push(nb); selectedBoxIndex=boxes.length-1; updateBoxList();
-          saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
-        }
-      } else if(dragMode==='move'||dragMode==='resize'){
-        saveState(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
-      }
-      isDragging=false; dragMode=null; resizeHandle=null; isPanning=false; canvas.style.cursor='crosshair'; scheduleDraw();
-    }
-
-    function onWheel(e){
-      e.preventDefault();
-      const {x:mx,y:my}=getCanvasCoordinates(e);
-      const oz=zoom; const f=e.deltaY>0?0.9:1.1; zoom=Math.max(0.1, Math.min(5, zoom*f));
-      const ch=zoom/oz; panX = mx - (mx - panX)*ch; panY = my - (my - panY)*ch;
-      updateZoomLevel(); scheduleDraw();
-    }
-
-    // ---- Draw ----
-    function draw(){
-      if(imageMetadata.length===0){
-        ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
-        ctx.fillStyle='#666'; ctx.font='20px Arial'; ctx.textAlign='center';
-        ctx.fillText('Upload images to start editing', canvas.width/2, canvas.height/2);
-        return;
-      }
+    function markNoLabel(){
+      if(!imageMetadata.length) return;
       const meta=imageMetadata[currentImageIndex];
-      if(!meta?.img){
-        ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
-        ctx.fillStyle='#666'; ctx.font='16px Arial'; ctx.textAlign='center';
-        ctx.fillText('Loading image...', canvas.width/2, canvas.height/2);
-        return;
-      }
-      const img=meta.img;
-      ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      const cx=canvas.width/2, cy=canvas.height/2; const sw=img.width*zoom, sh=img.height*zoom;
-      const dx=cx+panX-sw/2, dy=cy+panY-sh/2;
-      ctx.drawImage(img, dx, dy, sw, sh);
-      if(showBoxes && boxes && boxes.length>0){
-        boxes.forEach((b,i)=>{
-          const ib=normalizedToImage(b); const s1=imageToScreen(ib.x1,ib.y1), s2=imageToScreen(ib.x2,ib.y2);
-          const w=s2.x-s1.x, h=s2.y-s1.y; if(w<2||h<2) return;
-          const color=COLORS[b.cls]||generateColorForIndex(b.cls); const sel=i===selectedBoxIndex;
-          ctx.strokeStyle=sel?'#ff0000':color; ctx.lineWidth=sel?3:2; ctx.setLineDash([]); ctx.strokeRect(s1.x,s1.y,w,h);
-          const name=CLASS_NAMES[b.cls]||`Class ${b.cls}`; ctx.font='14px Arial'; ctx.textAlign='left';
-          const tw=ctx.measureText(name).width+8; const th=20; const lx=s1.x, ly=Math.max(s1.y-th,0);
-          ctx.fillStyle=sel?'#ff0000':color; ctx.fillRect(lx,ly,tw,th); ctx.fillStyle='#fff'; ctx.fillText(name, lx+4, ly+15);
-          if(sel){
-            [{x:ib.x1,y:ib.y1},{x:ib.x2,y:ib.y1},{x:ib.x1,y:ib.y2},{x:ib.x2,y:ib.y2}].forEach(hd=>{
-              const s=imageToScreen(hd.x,hd.y); ctx.fillStyle='#ffff00'; ctx.fillRect(s.x-8, s.y-8, 16, 16);
-            });
-          }
-        });
-      }
+      setStatus(meta.name,'labeled'); boxes=[]; labels[currentImageIndex]=[];
+      updateBoxList(); scheduleDraw(); updateImageInDatabase(currentImageIndex); updateUI();
     }
 
-    // ---- State mgmt ----
-    function saveState(){ undoStack.push(JSON.parse(JSON.stringify(boxes))); if(undoStack.length>MAX_UNDO) undoStack.shift(); $("undoBtn").disabled = false; }
-    function undo(){ if(undoStack.length>0){ boxes=undoStack.pop(); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); $("undoBtn").disabled = undoStack.length===0; saveCurrentLabels(); updateImageInDatabase(currentImageIndex); } }
-    function saveCurrentLabels(){ if(imageMetadata.length>0 && currentImageIndex>=0){ labels[currentImageIndex]=[...boxes]; } }
-
-    // ---- Project save/load ----
-    function saveProject(){
-      const project = {
-        classes: CLASS_NAMES,
-        status: [...statusMap.entries()],
-        imageNames: imageMetadata.map(m=>m.name),
-        savedAt: new Date().toISOString()
-      };
-      localStorage.setItem('yolo_editor_project', JSON.stringify(project));
-      alert('Project saved to localStorage.');
-    }
-
-    function loadProject(){
-      const raw = localStorage.getItem('yolo_editor_project');
-      if(!raw){ alert('No saved project found.'); return; }
-      try{
-        const proj = JSON.parse(raw);
-        if(Array.isArray(proj.classes) && proj.classes.length){
-          CLASS_NAMES = proj.classes.slice();
-          ensureColorsForClasses();
-          rebuildClassUI();
-        }
-        if(Array.isArray(proj.status)){
-          statusMap.clear();
-          for(const [name,status] of proj.status){ if(name && status) statusMap.set(name,status); }
-          persistStatus();
-        }
-        if(imageMetadata.length){
-          const deleted = new Set([...statusMap.entries()].filter(([_,s])=>s==='deleted').map(([n])=>n));
-          const keptMeta=[], keptLabels=[];
-          for(let i=0;i<imageMetadata.length;i++){
-            if(!deleted.has(imageMetadata[i].name)){ keptMeta.push(imageMetadata[i]); keptLabels.push(labels[i]||[]); }
-          }
-          imageMetadata = keptMeta;
-          labels = keptLabels;
-          currentImageIndex = 0;
-          buildLabelDatabase();
-          loadCurrentImage();
-          updateQuickNavigation();
-          updateUI();
-        }
-        alert('Project loaded.');
-      } catch(e){
-        alert('Failed to load project: ' + e.message);
-      }
-    }
-
-    // ---- View controls ----
     function fitToScreen(){
       const meta=imageMetadata[currentImageIndex]; if(!meta?.img) return;
-      const img=meta.img; const pad=50; const aw=canvas.width-pad, ah=canvas.height-pad;
-      const sx=aw/img.width, sy=ah/img.height; zoom=Math.min(sx,sy,1); panX=0; panY=0; updateZoomLevel(); scheduleDraw();
+      const img=meta.img, pad=50, aw=viewW-pad, ah=viewH-pad;
+      const zx=aw/img.width, zy=ah/img.height;
+      zoom=Math.min(zx,zy,1); panX=0; panY=0; updateZoomLevel(); scheduleDraw();
     }
-    function zoomIn(){ zoom=Math.min(zoom*1.2,5); updateZoomLevel(); scheduleDraw(); }
-    function zoomOut(){ zoom=Math.max(zoom/1.2,0.1); updateZoomLevel(); scheduleDraw(); }
+    const zoomIn=()=>zoomAt(viewW/2,viewH/2,1.2);
+    const zoomOut=()=>zoomAt(viewW/2,viewH/2,1/1.2);
     function resetZoom(){ zoom=1; panX=0; panY=0; updateZoomLevel(); scheduleDraw(); }
-    function toggleBoxes(){ const cb=$("showBoxes"); showBoxes = !showBoxes; cb.checked = showBoxes; scheduleDraw(); }
-    function updateZoomLevel(){ $("zoomLevel").textContent = `${Math.round(zoom*100)}%`; }
+    function toggleBoxes(){ const cb=$("showBoxes"); showBoxes=!showBoxes; cb.checked=showBoxes; scheduleDraw(); }
+    const updateZoomLevel=()=>{ $("zoomLevel").textContent=`${Math.round(zoom*100)}%`; }
 
-    // ---- UI updates ----
+    function draw(){
+      updateRenderState();
+      const cw=viewW,ch=viewH; ctx.clearRect(0,0,cw,ch); ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,cw,ch);
+      const meta=imageMetadata[currentImageIndex]; if(!meta?.img) return;
+      const sw=RS.scaleX*RS.imgW, sh=RS.scaleY*RS.imgH;
+      ctx.drawImage(meta.img, RS.dx, RS.dy, sw, sh);
+      if(!showBoxes||!boxes.length) return;
+      for(let i=0;i<boxes.length;i++){
+        const ib=normToImage(boxes[i]);
+        const p1=imageToScreen(ib.x1,ib.y1), p2=imageToScreen(ib.x2,ib.y2);
+        const w=p2.x-p1.x, h=p2.y-p1.y; if(w<2||h<2) continue;
+        const sel=i===selectedBoxIndex;
+        ctx.lineWidth=sel?3:2; ctx.setLineDash([]); ctx.strokeStyle=sel?'#ff0000':colorOf(boxes[i].cls);
+        ctx.strokeRect(p1.x,p1.y,w,h);
+        const name=CLASS_NAMES[boxes[i].cls]||`Class ${boxes[i].cls}`;
+        ctx.font='14px Arial'; ctx.textAlign='left';
+        const tw=ctx.measureText(name).width+8, th=20, lx=p1.x, ly=Math.max(p1.y-th,0);
+        ctx.fillStyle=sel?'#ff0000':colorOf(boxes[i].cls);
+        ctx.fillRect(lx,ly,tw,th); ctx.fillStyle='#fff'; ctx.fillText(name,lx+4,ly+15);
+      }
+    }
+
+    function saveState(){ undoStack.push(JSON.parse(JSON.stringify(boxes))); if(undoStack.length>MAX_UNDO) undoStack.shift(); $("undoBtn").disabled=false }
+    function undo(){ if(!undoStack.length) return; boxes=undoStack.pop(); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); $("undoBtn").disabled=undoStack.length===0; saveCurrentLabels(); updateImageInDatabase(currentImageIndex); }
+    function saveCurrentLabels(){ if(imageMetadata.length && currentImageIndex>=0) labels[currentImageIndex]=[...boxes]; }
+
     function updateBoxList(){
       const list=$("boxList"); list.innerHTML='';
       boxes.forEach((b,i)=>{
         const it=document.createElement('div'); it.className=`box-item ${i===selectedBoxIndex?'selected':''}`;
         const sp=document.createElement('span'); sp.textContent=`${i+1}. ${CLASS_NAMES[b.cls]}`;
         const del=document.createElement('button'); del.className='delete-btn'; del.textContent='Delete';
-        del.onclick=(ev)=>{ ev.stopPropagation(); saveState(); boxes.splice(i,1);
-          if(selectedBoxIndex===i) selectedBoxIndex=-1; else if(selectedBoxIndex>i) selectedBoxIndex--;
-          updateBoxList(); scheduleDraw(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
-        };
-        it.appendChild(sp); it.appendChild(del);
-        it.onclick=()=>{ selectedBoxIndex=i; updateBoxList(); scheduleDraw(); };
+        del.onclick=(ev)=>{ ev.stopPropagation(); saveState(); boxes.splice(i,1); if(selectedBoxIndex===i) selectedBoxIndex=-1; else if(selectedBoxIndex>i) selectedBoxIndex--; updateBoxList(); scheduleDraw(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); };
+        it.appendChild(sp); it.appendChild(del); it.onclick=()=>{ selectedBoxIndex=i; updateBoxList(); scheduleDraw(); };
         list.appendChild(it);
       });
-    }
-
-    function updateFilterResults(){
-      const res=$("filterResults"); const valid=getValidIndices();
-      if(isFiltered){
-        const out=[]; const s=$("filterStatus").value, c=$("filterClass").value; if(s) out.push(s); if(c!=='') out.push(CLASS_NAMES[parseInt(c)]);
-        const mc=Object.entries(classFilterState).filter(([_,st])=>st!==null);
-        if(mc.length>0){ const inc=mc.filter(([_,st])=>st==='include').length; const exc=mc.filter(([_,st])=>st==='exclude').length; out.push(`${inc} included, ${exc} excluded classes`); }
-        if(hidePrevLabeled) out.push('hide prev labeled');
-        res.innerHTML = `<div style="color:#4a90e2;font-weight:bold;">Showing ${valid.length} of ${imageMetadata.length} images</div><div style="margin-top:4px;">Filters: ${out.join(', ')||'Advanced filters'}</div>`;
-      } else if(imageMetadata.length>0){
-        res.innerHTML = `<div style="color:#ccc;">Showing all ${imageMetadata.length} images (no filters)</div>`;
-      } else {
-        res.innerHTML = '<div style="color:#ccc;">No images loaded</div>';
-      }
     }
 
     function buildStatsText(){
@@ -1204,141 +737,150 @@ ${Object.entries(classStats).map(([k,v])=>`${k}: ${v}`).join('\n')}
 Generated: ${new Date().toISOString()}`;
     }
 
+    function updateFilterResults(){
+      const res=$("filterResults"); const valid=getValidIndices();
+      if(isFiltered){
+        const out=[]; const s=$("filterStatus").value, c=$("filterClass").value; if(s) out.push(s); if(c!=='') out.push(CLASS_NAMES[parseInt(c)]);
+        const mc=Object.entries(classFilterState).filter(([_,st])=>st!==null); if(mc.length){ const inc=mc.filter(([_,st])=>st==='include').length, exc=mc.filter(([_,st])=>st==='exclude').length; out.push(`${inc} included, ${exc} excluded classes`); }
+        if(hidePrevLabeled) out.push('hide prev labeled');
+        res.innerHTML=`<div style="color:#4a90e2;font-weight:700;">Showing ${valid.length} of ${imageMetadata.length} images</div><div style="margin-top:4px;">Filters: ${out.join(', ')||'Advanced filters'}</div>`;
+      } else res.innerHTML = imageMetadata.length?`<div style="color:#ccc;">Showing all ${imageMetadata.length} images (no filters)</div>`:'<div style="color:#ccc;">No images loaded</div>';
+    }
+
     function updateUI(){
       $("totalImages").textContent=imageMetadata.length; $("loadedImages").textContent=imageCache.size();
       const ic=$("imageCounter"), nm=$("imageName"), prev=$("prevBtn"), next=$("nextBtn"), page=$("pageInput"), dbg=$("debugInfo");
-      if(imageMetadata.length===0){
-        ic.textContent='0 / 0'; nm.textContent='No image loaded'; dbg.textContent='No image loaded';
-        prev.disabled=true; next.disabled=true; page.max=0; updateZoomLevel(); return;
-      }
-      const valid=getValidIndices(); const meta=imageMetadata[currentImageIndex]; const arr=labels[currentImageIndex]||[];
-      const has=arr.length>0; const st=getCurrentImageStatus(); const labelFile=meta.labelFile||'No label file'; const strategy=meta.matchStrategy||'N/A';
-      dbg.innerHTML=`Index: ${currentImageIndex}<br>Label file: ${labelFile}<br>Match: ${strategy}<br>Boxes: ${arr.length}`;
-      if(isFiltered){
-        const pos=currentFilteredIndices.indexOf(currentImageIndex);
-        ic.textContent = (pos!==-1) ? `${pos+1} / ${currentFilteredIndices.length} (filtered)` : `- / ${currentFilteredIndices.length} (filtered out)`;
-      } else {
-        ic.textContent = `${currentImageIndex+1} / ${imageMetadata.length}`;
-      }
-      let mark='', style=''; if(st==='filtered-out'){ mark='🔶'; style='color:#ffc107;font-style:italic;'; } else if(has){ mark='🟢'; } else { mark='🔴'; }
-      nm.innerHTML = `<span style="${style}">${mark} ${meta.name}</span>`;
+      if(!imageMetadata.length){ ic.textContent='0 / 0'; nm.textContent='No image loaded'; dbg.textContent='No image loaded'; prev.disabled=true; next.disabled=true; page.max=0; updateZoomLevel(); return }
+      const valid=getValidIndices(); const meta=imageMetadata[currentImageIndex]; const arr=labels[currentImageIndex]||[]; const has=arr.length>0; const forced=statusMap.get(norm(meta.name))==='labeled' && !arr.length; const st=getCurrentImageStatus(); const labelFile=meta.labelFile||'No label file', strategy=meta.matchStrategy||'N/A';
+      dbg.innerHTML=`Index: ${currentImageIndex}<br>Label file: ${labelFile}<br>Match: ${strategy}<br>Boxes: ${arr.length}${forced?' (No Label)':''}`;
+      if(isFiltered){ const pos=currentFilteredIndices.indexOf(currentImageIndex); ic.textContent=(pos!==-1)?`${pos+1} / ${currentFilteredIndices.length} (filtered)`:`- / ${currentFilteredIndices.length} (filtered out)`; }
+      else ic.textContent=`${currentImageIndex+1} / ${imageMetadata.length}`;
+      let mark='',style=''; if(st==='filtered-out'){ mark='🔶'; style='color:#ffc107;font-style:italic;'; } else if(has||forced){ mark='🟢'; } else { mark='🔴'; }
+      nm.innerHTML=`<span style="${style}">${mark} ${meta.name}</span>`;
       if(isFiltered && st==='filtered-out'){
-        const hasNext=currentFilteredIndices.some(i=>i>currentImageIndex);
-        const hasPrev=currentFilteredIndices.some(i=>i<currentImageIndex);
+        const hasNext=currentFilteredIndices.some(i=>i>currentImageIndex), hasPrev=currentFilteredIndices.some(i=>i<currentImageIndex);
         prev.disabled=!hasPrev; next.disabled=!hasNext; prev.textContent='◀ Prev Filtered (A)'; next.textContent='Next Filtered (D) ▶';
       } else {
-        const pos=valid.indexOf(currentImageIndex); prev.disabled=pos<=0; next.disabled=pos>=valid.length-1;
-        prev.textContent='◀ Prev (A)'; next.textContent='Next (D) ▶';
+        const pos=valid.indexOf(currentImageIndex); prev.disabled=pos<=0; next.disabled=pos>=valid.length-1; prev.textContent='◀ Prev (A)'; next.textContent='Next (D) ▶';
       }
-      page.max = valid.length; updateZoomLevel(); updateFilterStats();
+      page.max=valid.length; updateZoomLevel(); updateFilterStats();
     }
 
     function showDetailedDebug(){
-      if(imageMetadata.length===0){ alert('No images loaded'); return }
+      if(!imageMetadata.length){ alert('No image loaded'); return }
       const meta=imageMetadata[currentImageIndex]; const arr=labels[currentImageIndex]||[];
-      const match = boxes.length===arr.length && boxes.every((b,i)=> arr[i] && b.cls===arr[i].cls && Math.abs(b.xc-arr[i].xc)<0.001 && Math.abs(b.yc-arr[i].yc)<0.001 );
+      const match=boxes.length===arr.length && boxes.every((b,i)=>arr[i]&&b.cls===arr[i].cls && Math.abs(b.xc-arr[i].xc)<0.001 && Math.abs(b.yc-arr[i].yc)<0.001 );
       alert(`Current Image: ${meta.name}\nBoxes: ${boxes.length}\nLabels: ${arr.length}\nMatch: ${match?'YES':'NO'}`);
     }
-    function reloadCurrentImage(){ loadCurrentImage(); }
 
-    // ---- Delete image ----
-    function deleteCurrentImage(){
-      if(imageMetadata.length===0){ alert('No image to delete'); return }
-      const name = imageMetadata[currentImageIndex].name;
-      if(!confirm(`Delete current image from this session?\n${name}\nThis does not delete the file from disk.`)) return;
-      setStatus(name,'deleted');
-      imageMetadata.splice(currentImageIndex,1); labels.splice(currentImageIndex,1); imageCache.clear();
-      if(currentImageIndex >= imageMetadata.length) currentImageIndex = imageMetadata.length - 1;
-      if(imageMetadata.length===0){
-        boxes=[]; selectedBoxIndex=-1; isFiltered=false; currentFilteredIndices=[]; labelDatabase.isBuilt=false;
-        updateDatabaseStatus(); updateUI(); scheduleDraw(); return;
-      }
-      buildLabelDatabase(); if(isFiltered) applyFilters(); loadCurrentImage(); updateQuickNavigation(); updateUI();
+    function updateDatabaseStatus(){
+      const ind=$("dbStatusIndicator"), txt=$("dbStatusText");
+      if(labelDatabase.isBuilt){ ind.className='status-indicator status-ready'; txt.textContent=`Ready (${imageMetadata.length} images)`; }
+      else if(imageMetadata.length){ ind.className='status-indicator status-building'; txt.textContent='Building database...'; }
+      else { ind.className='status-indicator status-error'; txt.textContent='No images loaded'; }
     }
 
-    // ---- Folder load (File System Access API) ----
-    async function chooseFolder(){
+    function updateQuickNavigation(){
+      const q=$("quickNav"); q.innerHTML=''; const v=getValidIndices(); const t=v.length; if(t<=10) return;
+      [{l:'First',i:0},{l:'10%',i:Math.floor(t*.1)},{l:'25%',i:Math.floor(t*.25)},{l:'50%',i:Math.floor(t*.5)},{l:'75%',i:Math.floor(t*.75)},{l:'90%',i:Math.floor(t*.9)},{l:'Last',i:t-1}]
+        .forEach(j=>{ const b=document.createElement('button'); b.className='btn'; b.style.padding='4px 8px'; b.textContent=j.l; b.onclick=()=>jumpToIndex(j.i); q.appendChild(b); });
+    }
+
+    // ====== CHOOSE FOLDER ======
+    async function verifyPermission(handle, readOnly=true){
+      if (!handle) return false;
       try{
-        const dirHandle = await window.showDirectoryPicker();
+        const opts={mode: readOnly?'read':'readwrite'};
+        if (await handle.queryPermission?.(opts) === 'granted') return true;
+        if (await handle.requestPermission?.(opts) === 'granted') return true;
+      }catch{}
+      return false;
+    }
+
+    async function chooseFolder(){
+      if (location.protocol !== 'https:' && location.hostname !== 'localhost'){
+        alert('Folder access requires HTTPS or http://localhost.');
+        return;
+      }
+      if (typeof window.showDirectoryPicker !== 'function'){
+        alert('Your browser does not support showDirectoryPicker. Use Chrome/Edge 86+.');
+        return;
+      }
+      try{
+        const dirHandle = await window.showDirectoryPicker({id:'yolo-editor-root', mode:'read'});
+        const ok = await verifyPermission(dirHandle, true);
+        if(!ok){ alert('Permission denied for the selected folder.'); return; }
         await loadDatasetFromDirectory(dirHandle);
-      }catch(err){ if(err && err.name!=='AbortError') alert('Folder access denied'); }
+      }catch(err){
+        if (err?.name === 'AbortError') return;
+        alert('Unable to open folder: ' + (err?.message || err));
+      }
     }
 
     async function loadDatasetFromDirectory(rootHandle){
-      showLoading('Loading Dataset...','Scanning folder structure...');
-      let imagesHandle;
-      try{ imagesHandle = await rootHandle.getDirectoryHandle('Images'); }
-      catch{ hideLoading(); alert('Missing required "Images" folder'); return }
-      let labelsHandle=null; try{ labelsHandle = await rootHandle.getDirectoryHandle('Labels'); }catch{}
-      let classFileHandle=null;
-      try{ classFileHandle = await rootHandle.getFileHandle('classes.txt'); }
-      catch{ try{ classFileHandle = await rootHandle.getFileHandle('classes.names'); }catch{} }
-      let statusJsonHandle=null, deletedTxtHandle=null, labeledTxtHandle=null;
-      try{ statusJsonHandle = await rootHandle.getFileHandle('image_status.json'); }catch{}
-      try{ deletedTxtHandle = await rootHandle.getFileHandle('deleted_list.txt'); }catch{}
-      try{ labeledTxtHandle = await rootHandle.getFileHandle('labeled_list.txt'); }catch{}
-
+      showLoading('Loading Dataset...','Scanning structure...');
       imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear();
 
-      if(statusJsonHandle){
-        try{
-          const file = await statusJsonHandle.getFile();
-          const arr = JSON.parse(await file.text());
-          if(Array.isArray(arr)){ arr.forEach(rec=>{ if(rec?.name && rec?.status) statusMap.set(rec.name, rec.status); }); persistStatus(); }
-        }catch{}
-      } else {
-        if(deletedTxtHandle){
-          try{ const file=await deletedTxtHandle.getFile(); const text=await file.text(); text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'deleted')); }catch{}
-        }
-        if(labeledTxtHandle){
-          try{ const file=await labeledTxtHandle.getFile(); const text=await file.text(); text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'labeled')); }catch{}
+      let imagesHandle, labelsHandle=null, classFileHandle=null, statusJsonHandle=null, deletedTxtHandle=null, labeledTxtHandle=null;
+
+      try{ imagesHandle = await rootHandle.getDirectoryHandle('Images'); }
+      catch{ hideLoading(); alert('Missing required "Images" folder in the selected directory.'); return; }
+
+      try{ labelsHandle = await rootHandle.getDirectoryHandle('Labels'); }catch{}
+
+      try{ classFileHandle   = await rootHandle.getFileHandle('classes.txt'); }catch{ try{ classFileHandle   = await rootHandle.getFileHandle('classes.names'); }catch{} }
+      try{ statusJsonHandle  = await rootHandle.getFileHandle('image_status.json'); }catch{}
+      try{ deletedTxtHandle  = await rootHandle.getFileHandle('deleted_list.txt'); }catch{}
+      try{ labeledTxtHandle  = await rootHandle.getFileHandle('labeled_list.txt'); }catch{}
+
+      try{
+        if(statusJsonHandle){
+          const file=await statusJsonHandle.getFile(); const arr=JSON.parse(await file.text());
+          if(Array.isArray(arr)) arr.forEach(r=>{ if(r?.name&&r?.status) statusMap.set(norm(r.name), r.status) });
+        } else {
+          if(deletedTxtHandle){ const t=await (await deletedTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'deleted')); }
+          if(labeledTxtHandle){ const t=await (await labeledTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'labeled')); }
         }
         persistStatus();
-      }
+      }catch{}
 
-      const deletedSet = getDeletedSet();
-      const imageEntries=[];
-      for await (const [name, handle] of imagesHandle.entries()){
+      const deleted=getDeletedSet();
+      const entries=[];
+      for await (const [name,handle] of imagesHandle.entries()){
         if(handle.kind==='file' && /\.(png|jpe?g|bmp|webp)$/i.test(name)){
-          if(!deletedSet.has(name)) imageEntries.push({name, handle});
+          if(!deleted.has(norm(name))) entries.push({name,handle});
         }
       }
-      imageEntries.sort((a,b)=>a.name.localeCompare(b.name));
+      if(!entries.length){ hideLoading(); alert('No images found in "Images"'); return; }
+      entries.sort((a,b)=>a.name.localeCompare(b.name));
 
       let idx=0;
-      for(const entry of imageEntries){
-        const file = await entry.handle.getFile();
-        imageMetadata.push({ name: entry.name, file, size: file.size, loaded:false, img:null });
-        labels[idx++] = [];
+      for(const e of entries){
+        const f=await e.handle.getFile();
+        imageMetadata.push({name:e.name, file:f, size:f.size, loaded:false, img:null});
+        labels[idx++]=[];
       }
 
       if(classFileHandle){
         try{
-          const file = await classFileHandle.getFile();
-          const content = (await file.text()).trim();
-          const lines = content.split('\n').filter(l=>l.trim());
-          if(lines.length>0){
-            CLASS_NAMES = lines.map((l,i)=> l.trim() || `Class ${i}`);
-            COLORS=["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb"]; ensureColorsForClasses();
-            rebuildClassUI();
-          }
+          const file=await classFileHandle.getFile();
+          const lines=(await file.text()).trim().split('\n').filter(l=>l.trim());
+          if(lines.length){ CLASS_NAMES=lines.map((l,i)=>l.trim()||`Class ${i}`); COLORS=["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb"]; ensureColors(); rebuildClassUI(); }
         }catch{}
       }
 
       if(labelsHandle){
-        const labelMap = new Map();
-        for await (const [lname, lhandle] of labelsHandle.entries()){
+        const map=new Map();
+        for await (const [lname,lhandle] of labelsHandle.entries()){
           if(lhandle.kind==='file' && /\.txt$/i.test(lname)){
-            const file = await lhandle.getFile();
-            const text = await file.text();
-            labelMap.set(lname.replace(/\.txt$/i,''), text);
+            const file=await lhandle.getFile(); map.set(lname.replace(/\.txt$/i,''), await file.text());
           }
         }
         for(let i=0;i<imageMetadata.length;i++){
-          const base = imageMetadata[i].name.replace(/\.[^/.]+$/, '');
-          if(labelMap.has(base)){
-            const parsed = parseLabelFile(labelMap.get(base));
-            labels[i] = parsed;
+          const base=imageMetadata[i].name.replace(/\.[^/.]+$/,'');
+          if(map.has(base)){
+            const parsed=parseLabelFile(map.get(base));
+            labels[i]=parsed;
             if(parsed.length>0) setStatus(imageMetadata[i].name,'labeled');
           }
         }
@@ -1348,27 +890,37 @@ Generated: ${new Date().toISOString()}`;
       buildLabelDatabase();
       await loadImageAtIndex(0);
       updateLoading(100,'Complete');
-      setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats(); }, 300);
+      setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats(); },200);
     }
 
-    // ---- Events ----
-    function setupEventListeners(){
-      $("imageUpload").addEventListener('change', handleImageUpload);
-      $("labelUpload").addEventListener('change', handleLabelUpload);
-      $("statusUpload").addEventListener('change', async (e)=>{ const files=[...e.target.files]; await handleStatusListUploadFiles(files); e.target.value=''; });
-      $("classUpload").addEventListener('change', async (e)=>{ const f=e.target.files?.[0]; if(!f) return; await handleClassesFile(f); e.target.value=''; });
+    function cleanupMemory(){
+      const cur=currentImageIndex, keep=[];
+      for(let i=Math.max(0,cur-5); i<=Math.min(imageMetadata.length-1,cur+5); i++) keep.push(i);
+      for(const [idx] of imageCache.c?.entries?.()||imageCache.cache.entries()){
+        if(!keep.includes(idx)){ (imageCache.c||imageCache.cache).delete(idx); if(imageMetadata[idx]){ imageMetadata[idx].loaded=false; imageMetadata[idx].img=null; } }
+      }
+      $("loadedImages").textContent=imageCache.size();
+    }
 
+    function init(){
+      loadStatus();
+      setupCanvas(); setupClassSelector(); setupEventListeners(); setupClassFilterGrid();
+      updateUI(); updateDatabaseStatus();
+      setInterval(cleanupMemory,30000);
+      window.addEventListener('beforeunload',()=>{ imageCache.clear(); imageMetadata=[]; labels=[]; filterCache.clear(); });
+    }
+
+    function setupEventListeners(){
       canvas.addEventListener('mousedown', onMouseDown);
       canvas.addEventListener('mousemove', onMouseMove);
       canvas.addEventListener('mouseup', onMouseUp);
       canvas.addEventListener('wheel', onWheel, {passive:false});
       canvas.addEventListener('contextmenu', e=>e.preventDefault());
-
       document.addEventListener('keydown', onKeyDown);
 
       const overlay=$("dragOverlay");
       document.addEventListener('dragover', e=>{ e.preventDefault(); overlay.classList.add('active'); });
-      document.addEventListener('dragleave', e=>{ if(!e.relatedTarget){ overlay.classList.remove('active'); } });
+      document.addEventListener('dragleave', e=>{ if(!e.relatedTarget) overlay.classList.remove('active'); });
       document.addEventListener('drop', async e=>{ e.preventDefault(); overlay.classList.remove('active'); await routeUploads([...e.dataTransfer.files]); });
 
       $("filterStatus").addEventListener('change', ()=>{ if(labelDatabase.isBuilt) applyFilters() });
@@ -1376,53 +928,95 @@ Generated: ${new Date().toISOString()}`;
       $("filterOperator").addEventListener('change', ()=>{ if(labelDatabase.isBuilt) applyFilters() });
     }
 
-    // ---- Init ----
-    function init(){
-      loadStatus();
-      setupCanvas(); setupClassSelector(); setupEventListeners(); setupClassFilterGrid();
-      updateUI(); updateDatabaseStatus();
-      setInterval(cleanupMemory, 30000);
-      window.addEventListener('beforeunload', ()=>{ imageCache.clear(); imageMetadata=[]; labels=[]; filterCache.clear(); });
+    function onKeyDown(e){
+      if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.type==='checkbox') return;
+      if(e.key==='Delete'||e.key==='Backspace'){ if(selectedBoxIndex!==-1){ saveState(); boxes.splice(selectedBoxIndex,1); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); } }
+      else if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A'){ e.preventDefault(); previousImage(); }
+      else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D'){ e.preventDefault(); nextImage(); }
+      else if(e.key>='0'&&e.key<='9'){ const ci=parseInt(e.key); if(ci<CLASS_NAMES.length){ if(selectedBoxIndex!==-1){ boxes[selectedBoxIndex].cls=ci; updateBoxList(); scheduleDraw(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); } else setCurrentClass(ci); } }
+      else if(e.key==='Tab'){ e.preventDefault(); currentClass = e.shiftKey ? (currentClass-1+CLASS_NAMES.length)%CLASS_NAMES.length : (currentClass+1)%CLASS_NAMES.length; setCurrentClass(currentClass); }
+      else if(e.key==='v'||e.key==='V'){ toggleBoxes(); }
+      else if(e.key==='f'||e.key==='F'){ fitToScreen(); }
+      else if(e.key==='r'||e.key==='R'){ resetZoom(); }
+      else if(e.key==='+'||e.key==='='){ zoomIn(); }
+      else if(e.key==='-'){ zoomOut(); }
     }
 
-    function cleanupMemory(){
-      const cur=currentImageIndex; const keep=[];
-      for(let i=Math.max(0,cur-5); i<=Math.min(imageMetadata.length-1,cur+5); i++){ keep.push(i) }
-      for(const [idx] of imageCache.cache.entries()){
-        if(!keep.includes(idx)){ imageCache.cache.delete(idx); imageMetadata[idx].loaded=false; imageMetadata[idx].img=null; }
+    let isDragging=false, dragMode=null, dragStart={x:0,y:0}, resizeHandle=null;
+    function getBoxAtPoint(x,y){ const p=screenToImage(x,y); for(let i=boxes.length-1;i>=0;i--){ const b=normToImage(boxes[i]); if(p.x>=b.x1&&p.x<=b.x2&&p.y>=b.y1&&p.y<=b.y2) return i; } return -1; }
+    function getResizeHandle(x,y,idx){
+      if(idx===-1) return null;
+      const b=normToImage(boxes[idx]);
+      const hs=[{x:b.x1,y:b.y1,h:'nw'},{x:b.x2,y:b.y1,h:'ne'},{x:b.x1,y:b.y2,h:'sw'},{x:b.x2,y:b.y2,h:'se'}];
+      for(const h of hs){ const s=imageToScreen(h.x,h.y); if(Math.abs(x-s.x)<=HANDLE_SIZE && Math.abs(y-s.y)<=HANDLE_SIZE) return h.h }
+      return null;
+    }
+    function onMouseDown(e){
+      const p=getCanvasPos(e); isDragging=true; dragStart=p;
+      if(e.button===2){ dragMode='pan'; canvas.style.cursor='grabbing'; return }
+      if(selectedBoxIndex!==-1){ const h=getResizeHandle(p.x,p.y,selectedBoxIndex); if(h){ dragMode='resize'; resizeHandle=h; canvas.style.cursor='nw-resize'; return } }
+      const idx=getBoxAtPoint(p.x,p.y); if(idx!==-1){ selectedBoxIndex=idx; dragMode='move'; canvas.style.cursor='move'; updateBoxList(); scheduleDraw(); return }
+      selectedBoxIndex=-1; dragMode='create'; canvas.style.cursor='crosshair'; updateBoxList();
+    }
+    function onMouseMove(e){
+      const p=getCanvasPos(e);
+      if(!isDragging){
+        if(selectedBoxIndex!==-1){ const h=getResizeHandle(p.x,p.y,selectedBoxIndex); if(h){ canvas.style.cursor='nw-resize'; return } }
+        const idx=getBoxAtPoint(p.x,p.y); canvas.style.cursor=idx!==-1?'move':'crosshair'; return;
       }
-      $("loadedImages").textContent=imageCache.size();
+      const dx=p.x-dragStart.x, dy=p.y-dragStart.y;
+      if(dragMode==='pan'){ panX+=dx; panY+=dy; dragStart=p; scheduleDraw(); }
+      else if(dragMode==='move' && selectedBoxIndex!==-1){
+        const s=screenToImage(dragStart.x,dragStart.y), c=screenToImage(p.x,p.y);
+        boxes[selectedBoxIndex].xc += (c.x-s.x)/RS.imgW;
+        boxes[selectedBoxIndex].yc += (c.y-s.y)/RS.imgH;
+        dragStart=p; scheduleDraw();
+      } else if(dragMode==='resize' && selectedBoxIndex!==-1){
+        const ip=screenToImage(p.x,p.y), cur=boxes[selectedBoxIndex], rb=normToImage(cur); let x1=rb.x1,y1=rb.y1,x2=rb.x2,y2=rb.y2;
+        if(resizeHandle.includes('n')) y1=ip.y; if(resizeHandle.includes('s')) y2=ip.y;
+        if(resizeHandle.includes('w')) x1=ip.x; if(resizeHandle.includes('e')) x2=ip.x;
+        if(x2-x1>5 && y2-y1>5){ boxes[selectedBoxIndex]={...imageToNorm(x1,y1,x2,y2), cls:cur.cls}; }
+        scheduleDraw();
+      } else if(dragMode==='create'){
+        draw();
+        const s=screenToImage(dragStart.x,dragStart.y), c=screenToImage(p.x,p.y);
+        const x1=Math.min(s.x,c.x), y1=Math.min(s.y,c.y), x2=Math.max(s.x,c.x), y2=Math.max(s.y,c.y);
+        const a=imageToScreen(x1,y1), b=imageToScreen(x2,y2);
+        ctx.save(); ctx.setLineDash([5,5]); ctx.lineWidth=2; ctx.strokeStyle=colorOf(currentClass);
+        ctx.strokeRect(a.x,a.y,b.x-a.x,b.y-a.y); ctx.restore();
+      }
     }
+    function onMouseUp(e){
+      if(!isDragging) return;
+      const p=getCanvasPos(e);
+      if(dragMode==='create'){
+        const s=screenToImage(dragStart.x,dragStart.y), c=screenToImage(p.x,p.y);
+        const x1=Math.min(s.x,c.x), y1=Math.min(s.y,c.y), x2=Math.max(s.x,c.x), y2=Math.max(s.y,c.y);
+        if(x2-x1>5 && y2-y1>5){ saveState(); boxes.push(imageToNorm(x1,y1,x2,y2)); selectedBoxIndex=boxes.length-1; updateBoxList(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); }
+      } else if(dragMode==='move'||dragMode==='resize'){ saveState(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); }
+      isDragging=false; dragMode=null; resizeHandle=null; canvas.style.cursor='crosshair'; scheduleDraw();
+    }
+    function onWheel(e){ e.preventDefault(); const p=getCanvasPos(e); zoomAt(p.x,p.y, e.deltaY>0?0.9:1.1); }
 
-    // Expose API
+    // expose
     return {
       init,
-      toggleClassEditor,
-      addNewClass,
-      resetToDefaultClasses,
-      exportClassFile,
-      _updateClassName: updateClassName,
-      _removeClass: removeClass,
-      applyFilters,
-      clearFilters,
-      rebuildDatabase,
-      toggleHidePrevLabeled,
-      previousImage,
-      nextImage,
-      goToImage,
+      toggleClassEditor, addNewClass, resetToDefaultClasses, exportClassFile,
+      _updateClassName: updateClassName, _removeClass: removeClass,
+      applyFilters, clearFilters, rebuildDatabase, toggleHidePrevLabeled,
+      previousImage, nextImage, goToImage,
       zoomIn, zoomOut, fitToScreen, resetZoom, toggleBoxes,
-      undo, saveProject, loadProject,
-      exportStats: ()=>{ const blob=new Blob([buildStatsText()],{type:'text/plain'}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='dataset_statistics.txt'; a.click(); },
+      undo,
+      exportStats: ()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buildStatsText()],{type:'text/plain'})); a.download='dataset_statistics.txt'; a.click(); },
       downloadBundle,
-      showDetailedDebug, reloadCurrentImage, deleteCurrentImage,
+      showDetailedDebug, deleteCurrentImage,
       chooseFolder,
-      cancelLoading
+      cancelLoading,
+      markNoLabel
     };
   })();
 
   window.addEventListener('load', YOLOUI.init);
   </script>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 </body>
 </html>
