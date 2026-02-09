@@ -604,9 +604,10 @@
       if(!img){
         img=new Image(); const blob=meta.file; img.src=URL.createObjectURL(blob);
         await new Promise((res,rej)=>{ img.onload=()=>res(); img.onerror=()=>rej('Load failed'); });
-        imageCache.set(idx,img); meta.loaded=true; meta.img=img;
+        imageCache.set(idx,img);
       }
-      boxes=[...labels[idx]||[]]; updateBoxList(); updateZoomLevel(); scheduleDraw();
+      meta.loaded=true; meta.img=img;
+      boxes=[...labels[idx]||[]]; selectedBoxIndex=-1; updateBoxList(); updateZoomLevel(); scheduleDraw();
       $("loadedImages").textContent=imageCache.size();
     }
     async function loadCurrentImage(){ await loadImageAtIndex(currentImageIndex); }
@@ -701,6 +702,15 @@
         const tw=ctx.measureText(name).width+8, th=20, lx=p1.x, ly=Math.max(p1.y-th,0);
         ctx.fillStyle=sel?'#ff0000':colorOf(boxes[i].cls);
         ctx.fillRect(lx,ly,tw,th); ctx.fillStyle='#fff'; ctx.fillText(name,lx+4,ly+15);
+        if(sel){
+          const hs=HANDLE_SIZE, hh=hs/2;
+          const corners=[{x:p1.x,y:p1.y},{x:p2.x,y:p1.y},{x:p1.x,y:p2.y},{x:p2.x,y:p2.y}];
+          corners.forEach(c=>{
+            ctx.fillStyle='#fff'; ctx.fillRect(c.x-hh,c.y-hh,hs,hs);
+            ctx.strokeStyle='#ff0000'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+            ctx.strokeRect(c.x-hh,c.y-hh,hs,hs);
+          });
+        }
       }
     }
 
@@ -954,8 +964,8 @@ Generated: ${new Date().toISOString()}`;
     function onMouseDown(e){
       const p=getCanvasPos(e); isDragging=true; dragStart=p;
       if(e.button===2){ dragMode='pan'; canvas.style.cursor='grabbing'; return }
-      if(selectedBoxIndex!==-1){ const h=getResizeHandle(p.x,p.y,selectedBoxIndex); if(h){ dragMode='resize'; resizeHandle=h; canvas.style.cursor='nw-resize'; return } }
-      const idx=getBoxAtPoint(p.x,p.y); if(idx!==-1){ selectedBoxIndex=idx; dragMode='move'; canvas.style.cursor='move'; updateBoxList(); scheduleDraw(); return }
+      if(selectedBoxIndex!==-1){ const h=getResizeHandle(p.x,p.y,selectedBoxIndex); if(h){ saveState(); dragMode='resize'; resizeHandle=h; canvas.style.cursor='nw-resize'; return } }
+      const idx=getBoxAtPoint(p.x,p.y); if(idx!==-1){ saveState(); selectedBoxIndex=idx; dragMode='move'; canvas.style.cursor='move'; updateBoxList(); scheduleDraw(); return }
       selectedBoxIndex=-1; dragMode='create'; canvas.style.cursor='crosshair'; updateBoxList();
     }
     function onMouseMove(e){
@@ -993,7 +1003,7 @@ Generated: ${new Date().toISOString()}`;
         const s=screenToImage(dragStart.x,dragStart.y), c=screenToImage(p.x,p.y);
         const x1=Math.min(s.x,c.x), y1=Math.min(s.y,c.y), x2=Math.max(s.x,c.x), y2=Math.max(s.y,c.y);
         if(x2-x1>5 && y2-y1>5){ saveState(); boxes.push(imageToNorm(x1,y1,x2,y2)); selectedBoxIndex=boxes.length-1; updateBoxList(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); }
-      } else if(dragMode==='move'||dragMode==='resize'){ saveState(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); }
+      } else if(dragMode==='move'||dragMode==='resize'){ saveCurrentLabels(); updateImageInDatabase(currentImageIndex); }
       isDragging=false; dragMode=null; resizeHandle=null; canvas.style.cursor='crosshair'; scheduleDraw();
     }
     function onWheel(e){ e.preventDefault(); const p=getCanvasPos(e); zoomAt(p.x,p.y, e.deltaY>0?0.9:1.1); }
