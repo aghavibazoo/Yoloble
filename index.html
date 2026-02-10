@@ -78,6 +78,11 @@
     .page-input{flex:1;background:#444;border:1px solid #555;color:#fff;padding:8px;border-radius:4px;font-size:12px}
     .quick-nav{display:flex;flex-wrap:wrap;gap:5px}
     .toggle-row{margin-top:10px;font-size:12px}
+    .sidebar{transition:width .3s ease,padding .3s ease,opacity .3s ease}
+    .sidebar.collapsed{width:0;padding:0;overflow:hidden;opacity:0;border-left:none}
+    .sidebar-toggle{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:10;background:#4a90e2;color:#fff;border:none;padding:8px 4px;cursor:pointer;font-size:14px;border-radius:4px 0 0 4px;opacity:.7;transition:opacity .2s,right .3s ease}
+    .sidebar-toggle:hover{opacity:1}
+    .sidebar-toggle.collapsed{right:0}
   </style>
 </head>
 <body>
@@ -111,9 +116,10 @@
     <div class="canvas-container">
       <div class="drag-overlay" id="dragOverlay">Drop images or lists here</div>
       <canvas id="canvas"></canvas>
+      <button class="sidebar-toggle" id="sidebarToggle" onclick="YOLOUI.toggleSidebar()" title="Toggle sidebar">◀</button>
     </div>
 
-    <div class="sidebar">
+    <div class="sidebar" id="sidebar">
       <div class="section">
         <h3>Database Status</h3>
         <div class="performance-section">
@@ -358,6 +364,7 @@
     }
     function updateClassSelector(){ document.querySelectorAll('.class-btn').forEach((b,idx)=> b.classList.toggle('active',idx===currentClass)); }
     function setCurrentClass(i){ currentClass=i; updateClassSelector(); }
+    function toggleSidebar(){ const sb=$("sidebar"), btn=$("sidebarToggle"); sb.classList.toggle('collapsed'); if(sb.classList.contains('collapsed')){ btn.textContent='▶'; btn.title='Show sidebar'; } else { btn.textContent='◀'; btn.title='Hide sidebar'; } setTimeout(()=>{ const resize=new Event('resize'); window.dispatchEvent(resize); },350); }
     function toggleClassEditor(){ const sec=$("classManagementSection"), btn=$("editClassesBtn"); if(sec.style.display==='none'){ sec.style.display='block'; btn.textContent='Hide Classes'; updateClassEditor(); } else { sec.style.display='none'; btn.textContent='Edit Classes'; } }
     function updateClassEditor(){
       const list=$("classEditList"), cnt=$("classCount");
@@ -1011,7 +1018,7 @@ Generated: ${new Date().toISOString()}`;
     // expose
     return {
       init,
-      toggleClassEditor, addNewClass, resetToDefaultClasses, exportClassFile,
+      toggleSidebar, toggleClassEditor, addNewClass, resetToDefaultClasses, exportClassFile,
       _updateClassName: updateClassName, _removeClass: removeClass,
       applyFilters, clearFilters, rebuildDatabase, toggleHidePrevLabeled,
       previousImage, nextImage, goToImage,
