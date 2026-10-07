@@ -512,10 +512,16 @@
       const n=unsavedCount();
       return !n || confirm(`${n} change(s) could not be saved to "${folder.name}". Continue anyway and lose them?`);
     }
+    // `boxes` belongs to the image named boxesOwner. While the next image is
+    // still loading, currentImageIndex already points at it, so edits are
+    // stored by owner, never by currentImageIndex.
+    let boxesOwner=null;
+    const indexOfName=name=>imageMetadata.findIndex(m=>m.name===name);
     function commitEdit(){
-      if(!imageMetadata.length || currentImageIndex<0) return;
-      saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
-      noteLabelsChanged(imageMetadata[currentImageIndex].name, labels[currentImageIndex]);
+      const i=boxesOwner===null ? -1 : indexOfName(boxesOwner);
+      if(i<0) return;
+      labels[i]=[...boxes]; updateImageInDatabase(i);
+      noteLabelsChanged(boxesOwner, labels[i]);
     }
 
     const getDeletedSet=()=>{ const s=new Set(); for(const [n,st] of statusMap.entries()) if(st==='deleted') s.add(n); return s; };
@@ -764,9 +770,13 @@
     const getValidIndices=()=>{ const base=isFiltered?currentFilteredIndices:Array.from({length:imageMetadata.length},(_,i)=>i); const del=getDeletedSet(); return base.filter(i=>!del.has(norm(imageMetadata[i].name))); };
     const getCurrentImageStatus=()=> !isFiltered?'normal':(currentFilteredIndices.includes(currentImageIndex)?'filtered-in':'filtered-out');
 
-    async function previousImage(){ commitEdit(); const st=getCurrentImageStatus(); if(isFiltered && st==='filtered-out'){ const prev=currentFilteredIndices.filter(i=>i<currentImageIndex).pop(); if(prev!==undefined){ currentImageIndex=prev; await loadCurrentImage(); updateUI(); } } else { const v=getValidIndices(); const p=v.indexOf(currentImageIndex); if(p>0){ currentImageIndex=v[p-1]; await loadCurrentImage(); updateUI(); } } }
-    async function nextImage(){ commitEdit(); const st=getCurrentImageStatus(); if(isFiltered && st==='filtered-out'){ const nxt=currentFilteredIndices.find(i=>i>currentImageIndex); if(nxt!==undefined){ currentImageIndex=nxt; await loadCurrentImage(); updateUI(); } } else { const v=getValidIndices(); const p=v.indexOf(currentImageIndex); if(p<v.length-1){ currentImageIndex=v[p+1]; await loadCurrentImage(); updateUI(); } } }
-    async function jumpToIndex(rel){ const v=getValidIndices(); if(rel>=0&&rel<v.length){ commitEdit(); currentImageIndex=v[rel]; await loadCurrentImage(); updateUI(); } }
+    // Navigation runs one step at a time, so fast key presses cannot overlap image loads.
+    let navQueue=Promise.resolve();
+    const queueNav=fn=>(navQueue=navQueue.then(fn).catch(e=>console.error('Navigation failed',e)));
+    const previousImage=()=>queueNav(previousImageNow), nextImage=()=>queueNav(nextImageNow), jumpToIndex=rel=>queueNav(()=>jumpToIndexNow(rel));
+    async function previousImageNow(){ commitEdit(); const st=getCurrentImageStatus(); if(isFiltered && st==='filtered-out'){ const prev=currentFilteredIndices.filter(i=>i<currentImageIndex).pop(); if(prev!==undefined){ currentImageIndex=prev; await loadCurrentImage(); updateUI(); } } else { const v=getValidIndices(); const p=v.indexOf(currentImageIndex); if(p>0){ currentImageIndex=v[p-1]; await loadCurrentImage(); updateUI(); } } }
+    async function nextImageNow(){ commitEdit(); const st=getCurrentImageStatus(); if(isFiltered && st==='filtered-out'){ const nxt=currentFilteredIndices.find(i=>i>currentImageIndex); if(nxt!==undefined){ currentImageIndex=nxt; await loadCurrentImage(); updateUI(); } } else { const v=getValidIndices(); const p=v.indexOf(currentImageIndex); if(p<v.length-1){ currentImageIndex=v[p+1]; await loadCurrentImage(); updateUI(); } } }
+    async function jumpToIndexNow(rel){ const v=getValidIndices(); if(rel>=0&&rel<v.length){ commitEdit(); currentImageIndex=v[rel]; await loadCurrentImage(); updateUI(); } }
     function goToImage(){ const n=parseInt($("pageInput").value); const v=getValidIndices(); if(n>=1&&n<=v.length){ jumpToIndex(n-1); $("pageInput").value=''; } else alert(`Enter 1..${v.length}`) }
 
     async function routeUploads(files){
@@ -846,7 +856,7 @@
         imageCache.set(meta.name,img);
       }
       meta.loaded=true; meta.img=img;
-      boxes=[...labels[idx]||[]]; selectedBoxIndex=-1; updateBoxList(); updateZoomLevel(); scheduleDraw();
+      boxes=[...labels[idx]||[]]; boxesOwner=meta.name; selectedBoxIndex=-1; updateBoxList(); updateZoomLevel(); scheduleDraw();
       if(unsavedCount()) scheduleSave(0);
       $("loadedImages").textContent=imageCache.size();
     }
@@ -956,7 +966,7 @@
 
     function saveState(){ undoStack.push(JSON.parse(JSON.stringify(boxes))); if(undoStack.length>MAX_UNDO) undoStack.shift(); $("undoBtn").disabled=false }
     function undo(){ if(!undoStack.length) return; boxes=undoStack.pop(); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); $("undoBtn").disabled=undoStack.length===0; commitEdit(); }
-    function saveCurrentLabels(){ if(imageMetadata.length && currentImageIndex>=0) labels[currentImageIndex]=[...boxes]; }
+    function saveCurrentLabels(){ const i=boxesOwner===null ? -1 : indexOfName(boxesOwner); if(i>=0) labels[i]=[...boxes]; }
 
     function updateBoxList(){
       const list=$("boxList"); list.innerHTML='';

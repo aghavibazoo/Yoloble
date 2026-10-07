@@ -73,6 +73,7 @@ async function openRound(b, dir = 'round') {
   await b.evaluate('YOLOUI.fitToScreen()');
 }
 const snap = b => b.evaluate('YOLOUI._snapshot()');
+const lineCount = text => String(text).split('\n').filter(l => l.trim()).length;
 const settle = async b => { await b.evaluate('YOLOUI._flushSaves()'); await b.waitFor('YOLOUI._snapshot().unsaved === 0'); };
 
 // Drag on the canvas from one normalised image point to another.
@@ -137,6 +138,22 @@ test('edits are saved back into the folder; only label files and image_status.js
     if (rel === 'image_status.json' || rel === `Labels/${IMG0}.txt`) continue;
     assert.ok(buf.equals(disk[rel]), `${rel} changed`);
   }
+}));
+
+test('fast key presses never move boxes from one image to another', { skip }, () => withBrowser(async b => {
+  const original = ORIGINAL();
+  await putFolder(b, 'round', original);
+  await openRound(b);
+  for (let i = 0; i < 6; i++) await b.key('d');
+  for (let i = 0; i < 3; i++) await b.key('a');
+  await b.evaluate('new Promise(r => setTimeout(r, 300))');
+  await settle(b);
+  const s = await snap(b);
+  assert.equal(s.index, 3);
+  const own = original[`Labels/${s.name.replace(/\.jpg$/, '.txt')}`].toString();
+  assert.equal(lineCount(own), s.boxes.length, 'current image shows its own boxes');
+  const disk = await getFolder(b, 'round');
+  for (const [rel, buf] of Object.entries(original)) if (rel.startsWith('Labels/')) assert.ok(buf.equals(disk[rel]), `${rel} was rewritten`);
 }));
 
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
