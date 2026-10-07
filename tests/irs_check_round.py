@@ -14,6 +14,7 @@ test aid, not a replacement for irs ingest.
 """
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -27,9 +28,9 @@ RULES = load_config().config.dataset.labels
 
 def check(folder: Path) -> list[str]:
     problems: list[str] = []
-    # image_status.json.bak: Yoloble's copy of a status file it could not read (proposed for round_format.md)
-    expected_top = {"Images", "Labels", "classes.txt", "image_status.json", "round.json", "image_status.json.bak"}
-    top = {p.name for p in folder.iterdir()}
+    # image_status.json.<UTC>.bak: Yoloble's copy of a status file it could not read
+    expected_top = {"Images", "Labels", "classes.txt", "image_status.json", "round.json"}
+    top = {p.name for p in folder.iterdir() if not re.fullmatch(r"image_status\.json\.\d{8}T\d{6}Z(-\d+)?\.bak", p.name)}
     if top - expected_top:
         problems.append(f"unexpected entries in the round folder: {sorted(top - expected_top)}")
     round_json = json.loads((folder / "round.json").read_text(encoding="utf-8"))

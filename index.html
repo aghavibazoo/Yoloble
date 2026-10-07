@@ -1074,8 +1074,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if(back.length!==want.length || back.some((v,i)=>v!==want[i])) throw new Error(`${fileName} did not read back as written`);
     }
     // The one other file Yoloble may write: a copy of an image_status.json it
-    // could not read, made before replacing it (docs/round_format.md).
-    const STATUS_BACKUP='image_status.json.bak';
+    // could not read, made before replacing it. Named
+    // image_status.json.<UTC time, YYYYMMDDTHHMMSSZ>[-<n>].bak, so an earlier
+    // backup is never overwritten (matches /^image_status\.json\.\d{8}T\d{6}Z(-\d+)?\.bak$/).
+    const STATUS_BACKUP_PATTERN='image_status.json.<UTC time>.bak';
+    async function newStatusBackupName(dir){
+      const stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+Z$/,'Z'); // 20261007T153012Z
+      for(let n=1;;n++){
+        const name=`image_status.json.${stamp}${n>1?`-${n}`:''}.bak`;
+        try{ await dir.getFileHandle(name); }catch(e){ if(e?.name==='NotFoundError') return name; throw e; }
+      }
+    }
     // A write interrupted by a crash leaves Chromium's temporary file
     // ("<name>.crswap") next to the real one. Remove those left by Yoloble's own
     // writes (image_status.json, Labels/*.txt) when a folder is opened.
@@ -1205,10 +1214,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     async function replaceBrokenStatusFile(){
       if(!folder?.statusProblem || !folder.statusRaw) return;
       if(folder.otherWindow){ alert(`"${folder.name}" is open in another Yoloble window; replace image_status.json there.`); return; }
-      if(!confirm(`Replace image_status.json with the statuses Yoloble shows? The current file is kept as ${STATUS_BACKUP}.`)) return;
+      if(!confirm(`Replace image_status.json with the statuses Yoloble shows? The current file is kept as ${STATUS_BACKUP_PATTERN}.`)) return;
       if(!(await verifyPermission(folder.root,false))){ alert('Yoloble cannot write to this folder.'); return; }
-      try{ await writeTextFile(folder.root, STATUS_BACKUP, folder.statusRaw); }
-      catch(e){ alert(`Could not write ${STATUS_BACKUP} (${e.message||e}); image_status.json was not replaced.`); return; }
+      let backup='';
+      try{ backup=await newStatusBackupName(folder.root); await writeTextFile(folder.root, backup, folder.statusRaw); }
+      catch(e){ console.error('Status backup failed',e); alert(`Could not write the backup ${backup||STATUS_BACKUP_PATTERN} (${e.message||e}); image_status.json was not replaced.`); return; }
+      showNotice(`The old image_status.json was kept as ${backup}.`);
       folder.statusProblem=null; folder.statusRaw=null; folder.writable=true; save.error=null;
       hideSaveBanner(); noteStatusChanged(); await flushSaves();
     }
@@ -1225,7 +1236,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       $("saveBannerMsg").textContent = folder.otherWindow
         ? `"${folder.name}" is open in another Yoloble tab or window. So that the two cannot overwrite each other's work, this one is read-only: changes here are NOT saved. Close the other one, then open the folder here again.`
         : broken
-        ? `${folder.statusProblem}. To keep the reviews it may hold, "${folder.name}" was opened read-only: changes are NOT saved. Fix the file and reopen the folder, or replace it with the statuses shown here (the old file is kept as ${STATUS_BACKUP}).`
+        ? `${folder.statusProblem}. To keep the reviews it may hold, "${folder.name}" was opened read-only: changes are NOT saved. Fix the file and reopen the folder, or replace it with the statuses shown here (the old file is kept as ${STATUS_BACKUP_PATTERN}).`
         : !folder.writable
         ? `"${folder.name}" was opened read-only, so changes are NOT saved into it. Allow saving, or use Download Bundle before you close Yoloble.`
         : `Could not save to "${folder.name}": ${save.error?.message||save.error}. ${unsavedCount()} change(s) are not on disk yet. `+

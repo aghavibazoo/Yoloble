@@ -136,7 +136,9 @@ test('M5: an image_status.json Yoloble cannot read is never overwritten without 
   await b.evaluate(`document.getElementById('saveBannerReplace').click()`);
   await settle(b);
   disk = await getFolder(b, 'round');
-  assert.ok(disk['image_status.json.bak'].equals(broken));
+  const bak = Object.keys(disk).filter(k => /^image_status\.json\.\d{8}T\d{6}Z(-\d+)?\.bak$/.test(k));
+  assert.equal(bak.length, 1);
+  assert.ok(disk[bak[0]].equals(broken));
   const st = JSON.parse(disk['image_status.json']);
   assert.equal(st.length, 12);
   assert.equal(st.find(r => r.name === `${IMG0}.jpg`).status, 'reviewed');
@@ -441,7 +443,22 @@ test('R4: a second window cannot replace a broken image_status.json', { skip }, 
   await sleep(500);
   const disk = await getFolder(a, 'round');
   assert.ok(disk['image_status.json'].equals(broken));
-  assert.equal(disk['image_status.json.bak'], undefined);
+  assert.deepEqual(Object.keys(disk).filter(k => k.endsWith('.bak')), []);
+}));
+
+test('R5: replacing a broken status file never overwrites an earlier backup', { skip }, () => withBrowser(async b => {
+  const files = ORIGINAL();
+  files['image_status.json'] = Buffer.from('{ broken');
+  files['image_status.json.bak'] = Buffer.from('an older backup');
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  await b.evaluate(`document.getElementById('saveBannerReplace').click()`);
+  await settle(b);
+  const disk = await getFolder(b, 'round');
+  assert.equal(disk['image_status.json.bak'].toString(), 'an older backup', 'untouched');
+  const bak = Object.keys(disk).filter(k => /^image_status\.json\.\d{8}T\d{6}Z(-\d+)?\.bak$/.test(k));
+  assert.equal(bak.length, 1);
+  assert.equal(disk[bak[0]].toString(), '{ broken');
 }));
 
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

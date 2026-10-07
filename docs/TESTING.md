@@ -177,3 +177,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] `node --test` (all files in parallel) passes repeatedly; each test browser uses a port chosen by Chrome, so parallel test processes never share a browser.
 - [ ] Outside changes on a USB stick (R3): with the round on a FAT/exFAT stick, change a status in `image_status.json` with Notepad and save within a second of Yoloble saving, then review an image: both changes are in the file.
 - [ ] R4: with a broken `image_status.json`, open the folder in two tabs: only the first offers **Replace image_status.json**.
+- [ ] R5: with a broken `image_status.json` and an existing `image_status.json.bak`, **Replace** keeps the old `.bak` and writes the copy as `image_status.json.<UTC time>.bak` (e.g. `image_status.json.20261007T153012Z.bak`); a banner names it.
