@@ -355,4 +355,29 @@ test('keyboard: shortcuts work after clicking a checkbox, Ctrl+A does not change
   assert.equal(await b.evaluate(`document.getElementById('modalBg').classList.contains('show')`), false);
 }));
 
+test('R1: an edit made while an earlier file is being written is the one saved (slow disk)', { skip }, () => withBrowser(async b => {
+  const orig = ORIGINAL();
+  await putFolder(b, 'round', orig);
+  await openRound(b);
+  await slowDisk(b, 1500);
+  await b.evaluate(`(() => { const H = FileSystemFileHandle.prototype, cw = H.createWritable; window.__opened = [];
+    H.createWritable = function (o) { window.__opened.push(this.name); return cw.call(this, o); }; })()`);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });          // image 0 pending
+  await b.key('d'); await loaded(b, 1); await b.evaluate('YOLOUI.fitToScreen()');   // its write starts (slow)
+  const one = (await snap(b)).name.replace('.jpg', '.txt');
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });          // image 1 pending
+  await b.key('d'); await loaded(b, 2); await b.evaluate('YOLOUI.fitToScreen()');
+  const name = (await snap(b)).name;
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });          // image 2 pending (first edit)
+  await b.waitFor(`window.__opened.includes(${JSON.stringify('X')})`.replace('"X"', JSON.stringify(one)), 15000);  // image 1 is being written now
+  await sleep(200);
+  await drag(b, { x: 0.05, y: 0.05 }, { x: 0.15, y: 0.15 });          // image 2, second edit
+  await settle(b);
+  const s = await snap(b);
+  const disk = (await getFolder(b, 'round'))[`Labels/${name.replace('.jpg', '.txt')}`].toString();
+  assert.equal(lineCount(disk), s.boxes.length, 'the folder has both edits');
+  assert.equal(s.boxes.length, lineCount(orig[`Labels/${name.replace('.jpg', '.txt')}`]) + 2);
+  assert.match(s.saveState, /All changes saved/);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

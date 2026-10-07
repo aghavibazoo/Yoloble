@@ -1154,7 +1154,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     async function flushOnce(){
       const target=folder;
       try{
-        for(const [name,text] of [...save.pendingLabels]){
+        // Names only: each file's text is read when its turn comes, so an edit
+        // made while an earlier file was being written is the one written.
+        for(const name of [...save.pendingLabels.keys()]){
+          const text=save.pendingLabels.get(name);
+          if(text===undefined) continue;
           save.pendingLabels.delete(name); save.inFlight.set(name,text);
           try{ await writeLabelFile(name,text);
             const fn=folder.labelFiles.get(name)||YoloCore.labelFileNameFor(name);
