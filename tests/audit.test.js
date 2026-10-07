@@ -480,4 +480,22 @@ test('R7: a label file that keeps failing does not hold up the other files or th
   assert.equal((await snap(b)).unsaved, 1);
 }));
 
+test('R6: a label file named like its image except for case is shown, flagged and never written', { skip }, () => withBrowser(async b => {
+  const files = ORIGINAL();
+  const upper = IMG0.toUpperCase() + '.txt';
+  files[`Labels/${upper}`] = files[`Labels/${IMG0}.txt`]; delete files[`Labels/${IMG0}.txt`];
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  assert.equal((await snap(b)).boxes.length, 3, 'its boxes are shown');
+  assert.match(b.dialogs.join('\n'), /differs from .* only in upper\/lower case/);
+  const checks = await b.evaluate(`[...document.querySelectorAll('#checksPanel .check-item .msg')].map(e => e.textContent)`);
+  assert.match(checks[0], new RegExp(`Labels/${upper}.*needs exactly ${IMG0}\.txt`));
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await sleep(1200);
+  const disk = await getFolder(b, 'round');
+  assert.ok(disk[`Labels/${upper}`].equals(files[`Labels/${upper}`]), 'the mismatched file is not touched');
+  assert.equal(disk[`Labels/${IMG0}.txt`], undefined, 'no second file either');
+  assert.match(await b.evaluate(`document.getElementById('saveBannerMsg').textContent`), /must be renamed/);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

@@ -1099,6 +1099,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return removed;
     }
     async function writeLabelFile(imageName,text){
+      const wrongCase=folder.caseMismatch?.get(imageName);
+      if(wrongCase) throw new Error(`Labels/${wrongCase} must be renamed to ${YoloCore.labelFileNameFor(imageName)} (it differs only in upper/lower case) before this image can be saved`);
       if(!folder.labelsDir) folder.labelsDir=await folder.root.getDirectoryHandle('Labels',{create:true});
       await writeTextFile(folder.labelsDir, folder.labelFiles.get(imageName)||YoloCore.labelFileNameFor(imageName), text);
     }
@@ -2017,7 +2019,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         if(YoloCore.serializeLabels(parsed)===YoloCore.serializeLabels(arr))
           return YoloCore.checkFileIssues(raw, parsed, n, size, {notUtf8:save.badEncoding.has(name)});
       }
-      return YoloCore.checkImageBoxes(arr, n, size);
+      const out=YoloCore.checkImageBoxes(arr, n, size);
+      const wrongCase=folder?.caseMismatch?.get(name);
+      if(wrongCase) out.unshift({code:'label_name_case', box:-1, severity:'error', fix:'rename',
+        message:`Its label file is Labels/${wrongCase}; irs ingest needs exactly ${YoloCore.labelFileNameFor(name)}. Rename it and reopen the folder`});
+      return out;
     }
     const currentIssues=()=>{ const i=boxesOwner===null?-1:indexOfName(boxesOwner); return i<0?[]:imageIssues(i); };
     function renderChecks(){
@@ -2026,14 +2032,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if(boxesOwner===null){ panel.textContent='No image loaded'; return; }
       const issues=currentIssues();
       if(!issues.length){ const ok=document.createElement('div'); ok.className='check-ok'; ok.textContent='No problems on this image ✓'; panel.appendChild(ok); return; }
-      const FIX_LABEL={clip:'Clip to image', delete:'Delete box', class:'Pick class', rewrite:'Rewrite file'};
+      const FIX_LABEL={clip:'Clip to image', delete:'Delete box', class:'Pick class', rewrite:'Rewrite file', rename:null};
       issues.forEach(iss=>{
         const row=document.createElement('div'); row.className='check-item '+iss.severity;
         const msg=document.createElement('span'); msg.className='msg'; msg.textContent=iss.message; row.appendChild(msg);
         row.onclick=()=>{ if(iss.box>=0){ selectedBoxIndex=iss.box; updateBoxList(); scheduleDraw(); } };
-        const b=document.createElement('button'); b.textContent=FIX_LABEL[iss.fix];
-        b.onclick=e=>{ e.stopPropagation(); fixIssue(iss); };
-        row.appendChild(b); panel.appendChild(row);
+        if(FIX_LABEL[iss.fix]){
+          const b=document.createElement('button'); b.textContent=FIX_LABEL[iss.fix];
+          b.onclick=e=>{ e.stopPropagation(); fixIssue(iss); };
+          row.appendChild(b);
+        }
+        panel.appendChild(row);
       });
     }
     function fixIssue(iss){
@@ -2063,7 +2072,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           .forEach(n=>errors.push({name:n, text:'is reviewed but has no label file'}));
         // Every label file belongs to an image.
         const bases=new Set(folder.imageNames.map(n=>n.replace(/\.[^/.]+$/,'')));
-        (folder.labelFileList||[]).filter(f=>!bases.has(f.replace(/\.txt$/i,''))).forEach(f=>errors.push({text:`Labels/${f} belongs to no image in Images/`}));
+        const wrongCase=new Set(folder.caseMismatch.values());
+        (folder.labelFileList||[]).filter(f=>!bases.has(f.replace(/\.txt$/i,'')) && !wrongCase.has(f)).forEach(f=>errors.push({text:`Labels/${f} belongs to no image in Images/`}));
       }
       imageMetadata.forEach((m,i)=>{
         imageIssues(i).forEach(iss=>(iss.severity==='error'?errors:warnings).push({name:m.name, text:iss.message}));
@@ -2550,7 +2560,7 @@ Generated: ${new Date().toISOString()}`;
       const lowerNames=new Set(allImageNames.map(norm));
       const extraStatus=new Map([...statusEntries].filter(([n])=>!lowerNames.has(norm(n))));
       folder={root:rootHandle, name:rootHandle.name, writable, labelsDir:labelsHandle, imageNames:allImageNames, labelFiles:new Map(), extraStatus, classesText,
-              statusProblem, statusRaw};
+              statusProblem, statusRaw, caseMismatch:new Map()};
       if(!(await claimFolder(rootHandle))){ folder.writable=false; folder.otherWindow=true; }
       // Writing would replace the status file with what Yoloble could make of
       // it and lose the reviews in it: stay read-only until the reviewer decides.
@@ -2566,8 +2576,19 @@ Generated: ${new Date().toISOString()}`;
             map.set(lname.replace(/\.txt$/i,''), {text:d.text, utf8:d.ok, fileName:lname});
           }
         }
+        const byLowerBase=new Map([...map].map(([b,v])=>[norm(b),v]));
         for(let i=0;i<imageMetadata.length;i++){
           const name=imageMetadata[i].name, base=name.replace(/\.[^/.]+$/,'');
+          if(!map.has(base) && byLowerBase.has(norm(base))){
+            // Labels/A.txt for a.jpg: shown, but never written (on Windows writing
+            // a.txt would open A.txt and overwrite it) until it is renamed.
+            const {text,fileName}=byLowerBase.get(norm(base)), parsed=YoloCore.parseLabelText(text);
+            labels[i]=parsed.boxes.map(({line,...b})=>b);
+            folder.caseMismatch.set(name,fileName);
+            save.diskText.set(name, YoloCore.canonicalLabelText(text));
+            loadWarnings.push(`Labels/${fileName} differs from ${name} only in upper/lower case. Rename it to ${YoloCore.labelFileNameFor(name)}; until then its changes cannot be saved.`);
+            continue;
+          }
           if(map.has(base)){
             const {text,utf8,fileName}=map.get(base), parsed=YoloCore.parseLabelText(text);
             save.diskRaw.set(name, text); if(!utf8){ save.badEncoding.add(name); loadWarnings.push(`Labels/${fileName} is not valid UTF-8.`); }
