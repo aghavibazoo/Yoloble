@@ -699,4 +699,20 @@ test('NEW-1: an old window thawing after a take-over writes nothing, even a save
   assert.equal(lineCount((await getFolder(b, 'round'))[`Labels/${IMG0}.txt`]), 4, 'the new owner saves');
 }));
 
+test('NEW-6: Take over warns that the silent window may hold a different folder with the same name', { skip }, () => withBrowser(async a => {
+  const nested = {};
+  for (const [k, v] of Object.entries(ORIGINAL())) nested[`round/${k}`] = v;
+  await putFolder(a, 'x', nested); await putFolder(a, 'y', nested);
+  await a.evaluate(`(async () => { const r = await (await navigator.storage.getDirectory()).getDirectoryHandle('x'); await YOLOUI._openFolder(await r.getDirectoryHandle('round')); })()`);
+  await a.send('Page.disable');
+  a.send('Runtime.evaluate', { expression: 'setTimeout(() => alert("busy"), 0)' }).catch(() => {});
+  await sleep(300);
+  const b = await secondTab(a);
+  await b.evaluate(`(async () => { const r = await (await navigator.storage.getDirectory()).getDirectoryHandle('y'); await YOLOUI._openFolder(await r.getDirectoryHandle('round')); })()`);
+  assert.deepEqual(await bannerButtons(b), [true, true]);
+  await b.evaluate('YOLOUI.takeOverFolder()');
+  assert.match(b.dialogs.at(-1), /may be this same folder, or a different folder that only has the same name/);
+  assert.match(b.dialogs.at(-1), /becomes read-only: changes it has not saved yet are lost from the folder/);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

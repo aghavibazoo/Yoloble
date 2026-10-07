@@ -1095,7 +1095,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     async function checkFolderAgain(){ if(folder) applyClaim(await claimFolder(folder.root)); }
     async function takeOverFolder(){
       if(!folder?.blockedKey) return;
-      if(!confirm(`Take over "${folder.name}"? The other Yoloble window that has it open stops saving: whatever it has not saved yet stays only in that window.`)) return;
+      // The silent window may hold this folder or another folder that only has the
+      // same name (it cannot answer to tell); either way it stops saving.
+      if(!confirm(`Take over "${folder.name}"?\n\nAnother Yoloble window holds a folder with this name but does not answer. It may be this same folder, or a different folder that only has the same name. That window becomes read-only: changes it has not saved yet are lost from the folder (they stay only in that window).`)) return;
       releaseFolderLock();
       applyClaim({owner: await holdLock(folder.root, folder.blockedKey, true), reason:'unresponsive', key:folder.blockedKey});
     }

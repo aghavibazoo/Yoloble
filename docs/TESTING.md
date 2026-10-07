@@ -192,3 +192,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] NEW-4: review an image, then lock its label file, click the green pill (not reviewed) and edit: `image_status.json` stops saying `reviewed` at once, although the label edit cannot be saved.
 - [ ] NEW-5: remove an image from `image_status.json`, lock its label file, edit and review it, review another image: the file lists the first one as `unlabeled`.
 - [ ] NEW-1: in tab A edit an image and immediately let A sit in the background until Chrome freezes it (or block it with a message); in tab B **Take over**; return to A: it says it was taken over, and the label file still holds only what B wrote.
+- [ ] NEW-6: when **Take over** is offered, its question says the silent window may hold this folder or a different folder with the same name, and that it becomes read-only and its unsaved changes are lost from the folder.
