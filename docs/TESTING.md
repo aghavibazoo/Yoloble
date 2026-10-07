@@ -115,3 +115,7 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Below the image, a strip shows every image with its number: green border and ✓ when reviewed, amber when it has unchecked boxes, grey when it has none; a red **!** when Checks finds a problem; the current image is outlined and stays in view while you move.
 - [ ] Filters: **Not reviewed**, **Reviewed**, **With problems** (sample: the duplicate and the near-zero box images), a reason (only for rounds), a class. The count shows how many are shown. Clicking a thumbnail opens that image.
 - [ ] **T** (or **Thumbnails**) hides and shows the strip; the canvas grows to fill the space; the choice is remembered.
+
+### Shortcut overlay
+
+- [ ] **?** (or the **?** button) lists every key, grouped (Review, Boxes, Classes, View); while it is open keys do not act on the image; **Esc** or **Close** closes it.

@@ -137,6 +137,10 @@
     .check-item .msg{flex:1}
     .check-item button{background:#555;color:#fff;border:none;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;white-space:nowrap}
     .check-ok{font-size:12px;color:#7dd99a}
+    .keys-table{border-collapse:collapse;width:100%;font-size:13px}
+    .keys-table td{padding:4px 8px;border-bottom:1px solid #3a3a3a;vertical-align:top}
+    .keys-table td:first-child{white-space:nowrap;color:#ffd166;font-family:Consolas,monospace;width:1%}
+    .keys-table tr.group td{color:#4a90e2;font-weight:700;font-family:inherit;padding-top:12px;border-bottom:none}
     .picker{position:absolute;left:50%;top:40px;transform:translateX(-50%);z-index:50;background:#2d2d2d;border:1px solid #666;border-radius:6px;box-shadow:0 8px 30px rgba(0,0,0,.6);width:340px;padding:10px;display:none}
     .picker.show{display:block}
     .picker .title{font-size:12px;color:#bbb;margin-bottom:6px}
@@ -164,6 +168,7 @@
         <button class="btn" id="redoBtn" onclick="YOLOUI.redo()" disabled title="Ctrl+Y or Ctrl+Shift+Z">Redo</button>
         <button class="btn" onclick="YOLOUI.downloadBundle()">Download Bundle</button>
         <button class="btn" onclick="YOLOUI.exportStats()" title="Export dataset statistics">Stats</button>
+        <button class="btn btn-plain" onclick="YOLOUI.showShortcuts()" title="Keyboard shortcuts (?)">?</button>
       </div>
       <div class="right-controls info">
         <span id="roundInfo" class="round-info"></span>
@@ -1820,6 +1825,47 @@
       }catch{ delete el.dataset.drawn; }
     }
 
+    // ----- keyboard shortcut overlay (?) -----
+    const SHORTCUTS=[
+      ['Review'],
+      ['Space','Mark the image reviewed and go to the next one'],
+      ['Shift+Space','Mark reviewed even though Checks found a problem'],
+      ['N','No vehicles: remove all boxes, mark reviewed (confirmed empty frame)'],
+      ['A / ←   D / →','Previous / next image'],
+      ['U / Shift+U','Zoom to the next / previous unchecked model box, least confident first'],
+      ['Boxes'],
+      ['Drag on the image','Draw a box with the class for new boxes'],
+      ['Click, drag','Select a box; drag it to move, drag a handle to resize'],
+      ['Shift+arrows','Move the selected box 1 pixel (Ctrl+Shift: 10)'],
+      ['Delete / Backspace','Delete the selected box'],
+      ['Esc','Deselect the box, close a dialog'],
+      ['Ctrl+Z','Undo (per image)'],
+      ['Ctrl+Y / Ctrl+Shift+Z','Redo'],
+      ['Classes'],
+      ['0–9, Shift+0–9','Class 0–9, 10–19: changes the selected box, otherwise the class for new boxes'],
+      ['C','Search classes by name or ID'],
+      ['Tab / Shift+Tab','Next / previous class for new boxes'],
+      ['View'],
+      ['L','Class names on boxes on / off'],
+      ['V','Show / hide boxes'],
+      ['T','Thumbnail strip on / off'],
+      ['F','Fit the image to the window'],
+      ['R','Zoom to 100%'],
+      ['+ / −, mouse wheel','Zoom'],
+      ['Right-drag','Pan'],
+      ['?','This list'],
+    ];
+    function showShortcuts(){
+      const t=document.createElement('table'); t.className='keys-table';
+      SHORTCUTS.forEach(([k,d])=>{
+        const tr=document.createElement('tr');
+        if(d===undefined){ tr.className='group'; const td=document.createElement('td'); td.colSpan=2; td.textContent=k; tr.appendChild(td); }
+        else { const a=document.createElement('td'), b=document.createElement('td'); a.textContent=k; b.textContent=d; tr.append(a,b); }
+        t.appendChild(tr);
+      });
+      showModal('Keyboard shortcuts', t, [{label:'Close', primary:true}]);
+    }
+
     // ----- small UI helpers -----
     let toastTimer=null;
     function showToast(msg,ms=4000){ const t=$("toast"); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),ms); }
@@ -1827,7 +1873,7 @@
       $("modalTitle").textContent=title; const b=$("modalBody"); b.innerHTML=''; b.appendChild(bodyNode);
       const a=$("modalActions"); a.innerHTML='';
       buttons.forEach(({label,primary,onClick})=>{ const btn=document.createElement('button'); btn.className='btn'+(primary?'':' btn-plain'); btn.textContent=label; btn.onclick=()=>{ hideModal(); onClick?.(); }; a.appendChild(btn); });
-      $("modalBg").classList.add('show'); a.lastChild?.focus();
+      $("modalBg").classList.add('show'); a.lastChild?.focus({preventScroll:true}); $("modalBg").querySelector('.modal').scrollTop=0;
     }
     function hideModal(){ $("modalBg").classList.remove('show'); }
     const modalOpen=()=>$("modalBg").classList.contains('show');
@@ -2225,6 +2271,7 @@ Generated: ${new Date().toISOString()}`;
       else if((e.key==='l'||e.key==='L') && !e.ctrlKey && !e.metaKey){ toggleClassNames(); }
       else if((e.key==='u'||e.key==='U') && !e.ctrlKey && !e.metaKey){ jumpToUncertain(e.shiftKey); }
       else if((e.key==='t'||e.key==='T') && !e.ctrlKey && !e.metaKey){ toggleStrip(); }
+      else if(e.key==='?'){ e.preventDefault(); showShortcuts(); }
       else if(e.key==='Escape'){ if(selectedBoxIndex!==-1){ selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); } }
       else if(e.key==='Tab'){ e.preventDefault(); currentClass = e.shiftKey ? (currentClass-1+CLASS_NAMES.length)%CLASS_NAMES.length : (currentClass+1)%CLASS_NAMES.length; setCurrentClass(currentClass); }
       else if(e.key==='v'||e.key==='V'){ toggleBoxes(); }
@@ -2317,7 +2364,7 @@ Generated: ${new Date().toISOString()}`;
       showDetailedDebug, deleteCurrentImage,
       chooseFolder, grantWriteAccess, retrySave, resumeLastFolder, hideNotice,
       openClassPicker, toggleClassNames: ()=>toggleClassNames(), _renderClassList: renderClassList,
-      markReviewed, nextUnreviewed, finishRound, jumpToUncertain: ()=>jumpToUncertain(), toggleStrip: ()=>toggleStrip(),
+      markReviewed, nextUnreviewed, finishRound, showShortcuts, jumpToUncertain: ()=>jumpToUncertain(), toggleStrip: ()=>toggleStrip(),
       cancelLoading,
       // For the automated tests (tests/e2e.test.js); not used by the page.
       _openFolder: openFolder, _round: ()=>round && {roundId:round.roundId, modelId:round.modelId, classes:round.classes, images:round.images.size}, _flushSaves: ()=>flushSaves(), _saveSession: ()=>saveSessionNow(), _storageReady: ()=>storageReady,

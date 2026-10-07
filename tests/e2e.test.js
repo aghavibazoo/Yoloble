@@ -503,6 +503,20 @@ test('thumbnail strip: status colours, filters by status, problems, reason and c
   assert.equal(await b.evaluate(`document.getElementById('strip').classList.contains('hidden')`), false);
 }));
 
+test('? shows the keyboard shortcuts; Esc closes them', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await b.key('?', { shift: true, code: 'Slash', keyCode: 191 });
+  assert.equal(await b.evaluate(`document.getElementById('modalTitle').textContent`), 'Keyboard shortcuts');
+  const text = await b.evaluate(`document.getElementById('modalBody').textContent`);
+  for (const k of ['Space', 'Shift+Space', 'Shift+arrows', 'Ctrl+Y / Ctrl+Shift+Z', '0–9, Shift+0–9', 'U / Shift+U']) assert.ok(text.includes(k), k);
+  // Keys do nothing to the image while the list is open.
+  await b.key(' ');
+  assert.equal((await snap(b)).index, 0);
+  await b.key('Escape');
+  assert.equal(await b.evaluate(`document.getElementById('modalBg').classList.contains('show')`), false);
+}));
+
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._loadReadOnlyForTests(await r.getDirectoryHandle('round')); })()`);
