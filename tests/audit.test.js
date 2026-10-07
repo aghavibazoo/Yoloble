@@ -65,4 +65,15 @@ test('B2: dropping images, labels and a deleted_list together keeps each image w
   assert.deepEqual(await clsOf(b, 1), ['c.jpg', '2,2']);
 }));
 
+test('M6: labels dropped after the images are shown at once and survive moving on', { skip }, () => withBrowser(async b => {
+  await dropFiles(b, [['a.jpg', null], ['b.jpg', null]]);
+  await dropFiles(b, [['a.txt', '0 0.1 0.1 0.1 0.1\n'], ['b.txt', '1 0.5 0.5 0.2 0.2\n']]);
+  await b.waitFor(`getComputedStyle(document.getElementById('loadingOverlay')).display === 'none'`);
+  assert.equal((await snap(b)).boxes.length, 1, 'shown at once');
+  await b.key('d'); await loaded(b, 1);
+  await b.key('a'); await loaded(b, 0);
+  assert.deepEqual(await clsOf(b, 0), ['a.jpg', '0']);
+  assert.deepEqual(await clsOf(b, 1), ['b.jpg', '1']);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

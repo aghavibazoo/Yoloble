@@ -1494,6 +1494,10 @@
         if(i%50===0) await new Promise(r=>setTimeout(r,0));
       }
       updateLoading(90,'Building database...'); buildLabelDatabase();
+      // Show the new labels: the editor still held the boxes from before the drop,
+      // and the next edit or move would have stored those over them.
+      boxesOwner=null; undoStacks.clear(); redoStacks.clear();
+      await loadCurrentImage();
       updateLoading(100,`Loaded ${ok} labels.`);
       setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats(); },200);
     }
