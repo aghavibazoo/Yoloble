@@ -573,6 +573,55 @@ test('a deleted image can be restored with Undo on the message', { skip }, () =>
   assert.equal(st.find(r => r.name === IMG0 + '.jpg').status, 'reviewed', 'back to its status before the delete');
 }));
 
+test('drag and drop without a folder still works: images, labels, classes, old status lists, recovery after reload', { skip }, async () => {
+  const os = require('node:os');
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'yoloble-drop-'));
+  const files = ORIGINAL(); delete files['round.json']; delete files['image_status.json'];
+  files['deleted_list.txt'] = Buffer.from('hwy7_east__0badc0de__f029136.jpg\n');
+  // Drop everything from an OPFS copy, as File objects, through the same entry point as a real drop.
+  const drop = b => b.evaluate(`(async () => {
+    const top = await (await navigator.storage.getDirectory()).getDirectoryHandle('drop');
+    const out = [];
+    async function walk(d) { for await (const [n, h] of d.entries()) { if (h.kind === 'directory') await walk(h); else { const f = await h.getFile(); out.push(new File([f], n, { type: n.endsWith('.jpg') ? 'image/jpeg' : 'text/plain' })); } } }
+    await walk(top);
+    await YOLOUI._routeUploads(out);
+  })()`);
+  let b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    await putFolder(b, 'drop', files);
+    await drop(b);
+    await b.waitFor(`getComputedStyle(document.getElementById('loadingOverlay')).display === 'none' && YOLOUI._snapshot().owner !== null`);
+    await b.evaluate('YOLOUI.fitToScreen()');
+    let s = await snap(b);
+    assert.equal(s.count, 11, 'image in deleted_list.txt hidden');
+    assert.equal(s.boxes.length, 3);
+    assert.match(s.saveState, /Not saving to a folder/);
+    assert.match(b.dialogs.join('\n'), /Loaded 9 classes/);
+    await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+    await b.key(' ');
+    await b.waitFor('YOLOUI._snapshot().index === 1 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+    await b.evaluate('YOLOUI._saveSession()');
+    const zipStatus = await b.evaluate(`(async () => JSON.parse(await (await JSZip.loadAsync(await YOLOUI._buildBundle())).file('lists/image_status.json').async('string')))()`);
+    assert.equal(zipStatus.length, 12);
+    assert.equal(zipStatus.find(r => r.name === IMG0 + '.jpg').status, 'reviewed');
+    assert.equal(zipStatus.find(r => r.name === 'hwy7_east__0badc0de__f029136.jpg').status, 'deleted');
+  } finally { await b.close(); }
+  b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    await drop(b);
+    await b.waitFor(`getComputedStyle(document.getElementById('loadingOverlay')).display === 'none' && YOLOUI._snapshot().owner !== null`);
+    assert.match(b.dialogs.join('\n'), /Yoloble kept 1 label edit and 1 status change for "12 dropped images" from your last session/);
+    const s = await snap(b);
+    assert.equal(s.name, 'clark_ave_01__a1b2c3d4__f010808.jpg', 'resumes on the same image');
+    assert.equal(s.status[(IMG0 + '.jpg').toLowerCase()], 'reviewed');
+    await b.evaluate('YOLOUI._gotoIndex(0)');
+    await b.waitFor('YOLOUI._snapshot().index === 0 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+    assert.equal((await snap(b)).boxes.length, 4, 'edit restored');
+  } finally { await b.close(); }
+});
+
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._loadReadOnlyForTests(await r.getDirectoryHandle('round')); })()`);
