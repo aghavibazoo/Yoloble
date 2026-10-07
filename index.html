@@ -1105,8 +1105,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // Someone else (another program, another computer) changed the file since
       // Yoloble last read or wrote it: take their changes in first. The bytes
       // are compared, read right before writing: timestamps are too coarse on
-      // FAT/exFAT drives (2 s) to tell. A change landing after this read is
-      // caught by the read-back in writeTextFile, and merged on the retry.
+      // FAT/exFAT drives (2 s) to tell. Known limit: a change made between this
+      // check and the moment the new file is swapped in (usually milliseconds,
+      // longer on a slow share) is overwritten; the file system offers no
+      // compare-and-swap. A change landing after the swap but before the
+      // read-back fails that check and is merged on the retry.
       const fh=await statusFileHandle();
       if(fh){ const now=await (await fh.getFile()).text(); if(now!==save.statusText) mergeStatusFromDisk(now); }
       else if(save.statusText!==null) console.warn('image_status.json disappeared; writing it again');

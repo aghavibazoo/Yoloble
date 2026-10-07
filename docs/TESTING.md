@@ -185,3 +185,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] ASCII numbers: a label line with a full-width digit (`１`), a superscript (`²`), `inf`, `nan` or `0.5_0` is reported as unreadable on opening and in Checks, as irs ingest now reports it.
 - [ ] Review only with its labels (N1): lock one label file (open it in a program that locks it), edit that image and press **Space**: `image_status.json` does not say `reviewed` for it while the banner reports the locked file; release the lock (or **Retry now**): the label file is written, then `reviewed` appears.
 - [ ] N3: with a locked label file, edit that image (red banner), then **Ctrl+Z**: the banner goes away and the header says **All changes saved**.
+- [ ] README limits state the remaining overwrite window for `image_status.json` (an outside change in the instant between the check and the save).
