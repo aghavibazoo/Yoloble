@@ -564,4 +564,56 @@ test('N3: undoing an edit that could not be saved clears the save error', { skip
   assert.equal(await b.evaluate(`document.getElementById('saveBanner').classList.contains('show')`), false);
 }));
 
+async function secondTab(a) {
+  const b = await a.newTab();
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"'); await b.focus();
+  return b;
+}
+const bannerButtons = t => t.evaluate(`['saveBannerCheck', 'saveBannerTakeOver'].map(id => getComputedStyle(document.getElementById(id)).display !== 'none')`);
+
+// Slow (about a minute): while a tab of the origin is frozen, Chrome takes about 60 s to read the
+// stored folder handles in the second tab (seen with the OPFS harness; reading other records is fast).
+test('N2: a frozen owner window keeps a second tab read-only; Take over makes the old window read-only', { skip }, () => withBrowser(async a => {
+  const orig = ORIGINAL();
+  await putFolder(a, 'round', orig);
+  await openRound(a);
+  await settle(a); await a.evaluate('YOLOUI._saveSession()'); await sleep(1000);  // idle, as a tab is when Chrome freezes it
+  await a.send('Page.setWebLifecycleState', { state: 'frozen' });      // Chrome freezes background tabs like this
+  const b = await secondTab(a);
+  await openRound(b);
+  assert.match((await snap(b)).saveState, /Open in another window/);
+  assert.match(await b.evaluate(`document.getElementById('saveBannerMsg').textContent`), /does not answer/);
+  assert.deepEqual(await bannerButtons(b), [true, true]);
+  // Take over (confirmed), then edit in the new window: it saves.
+  await b.evaluate('YOLOUI.takeOverFolder()');
+  assert.match((await snap(b)).saveState, /All changes saved/);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await settle(b);
+  // The old window wakes up: it is read-only and writes nothing.
+  await a.send('Page.setWebLifecycleState', { state: 'active' });
+  await a.focus();
+  await a.waitFor(`/Taken over/.test(YOLOUI._snapshot().saveState)`);
+  await drag(a, { x: 0.05, y: 0.05 }, { x: 0.15, y: 0.15 });
+  await sleep(1000);
+  assert.equal(lineCount((await getFolder(a, 'round'))[`Labels/${IMG0}.txt`]), 4, 'only the new window\'s edit');
+}));
+
+test('N2: an owner blocked by a dialog keeps a second tab read-only; Check again lets it in once the owner has gone', { skip }, () => withBrowser(async a => {
+  await putFolder(a, 'round', ORIGINAL());
+  await openRound(a);
+  await a.send('Page.disable');                                          // the dialog stays open (not answered by the driver)
+  a.send('Runtime.evaluate', { expression: 'setTimeout(() => alert("Opened with warnings"), 0)' }).catch(() => {});
+  await sleep(300);
+  const b = await secondTab(a);
+  await openRound(b);
+  assert.match((await snap(b)).saveState, /Open in another window/);
+  assert.deepEqual(await bannerButtons(b), [true, true]);
+  // The first window goes away (navigated elsewhere, its lock is released): Check again gives this one the folder.
+  await Promise.race([a.send('Page.navigate', { url: 'about:blank' }).catch(() => {}), sleep(3000)]);
+  await sleep(500);
+  await b.focus();
+  await b.evaluate(`(async () => { await new Promise(r => setTimeout(r, 300)); await YOLOUI.checkFolderAgain(); })()`);
+  await b.waitFor(`/All changes saved/.test(YOLOUI._snapshot().saveState)`);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
