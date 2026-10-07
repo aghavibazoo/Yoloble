@@ -373,7 +373,9 @@ test('M4: strict reading of the formats irs rejects or accepts', () => {
   assert.deepEqual(v('1 1e0 0.5 0.1 0.1\n'), ['box_outside_image'], '1e0 is a float (1.0)');
   assert.deepEqual(v('1.5 0.5 0.5 0.1 0.1\n'), ['bad_class_id']);
   assert.deepEqual(v('﻿1 0.5 0.5 0.1 0.1\n'), ['bad_class_id'], 'the BOM is part of the first field');
-  assert.deepEqual(v('1 0.5_0 0.5 0.1 0.1\n'), [], 'underscores between digits are allowed by float()');
+  assert.deepEqual(v('1 0.5_0 0.5 0.1 0.1\n'), ['bad_number'], 'irs accepts ASCII decimals only (no underscores)');
+  assert.deepEqual(v('١ 0.5 0.5 0.1 0.1\n'), ['bad_class_id'], 'nor non-ASCII digits');
+  assert.deepEqual(v('1 １ 0.5 0.1 0.1\n'), ['bad_number'], 'nor full-width digits');
   assert.deepEqual(v('1 inf 0.5 0.1 0.1\n'), ['bad_number']);
   assert.deepEqual(v('1 0.5 0.5 0.1 0.1\n'), [], 'no-break space separates fields in Python');
   assert.deepEqual(v('1﻿0.5 0.5 0.1 0.1\n'), ['field_count'], 'a BOM does not separate fields');

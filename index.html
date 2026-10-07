@@ -396,7 +396,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
   // loads this exact block in Node, so keep it free of browser globals.
   const YoloCore = (() => {
     // Label files are read exactly as irs reads them (irs/dataset/labels.py:
-    // bytes decoded as UTF-8, str.splitlines(), str.split(), int(), float()),
+    // bytes decoded as UTF-8, str.splitlines(), str.split(), ASCII-only numbers),
     // so a file Yoloble accepts is a file irs accepts. JavaScript's own trim(),
     // \s and Number() differ (the BOM, '0x1', ...), so they are not used here.
     const PY_WS='\t\n\x0b\x0c\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000';
@@ -411,28 +411,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if(lines[lines.length-1]==='') lines.pop();
       return lines;
     }
-    // float(): decimal literals with optional exponent and single underscores
-    // between digits, or inf/infinity/nan. Anything else (hex, '', '1..2') is
-    // not a number. Returns undefined when float() would raise.
-    const PY_FLOAT=/^[+-]?(?:(?:\d(?:_?\d)*)?\.\d(?:_?\d)*|\d(?:_?\d)*\.?)(?:[eE][+-]?\d(?:_?\d)*)?$/;
-    function pyFloat(t){
-      if(PY_FLOAT.test(t)) return Number(t.replace(/_/g,''));
-      const m=/^([+-]?)(inf|infinity|nan)$/i.exec(t);
-      if(m) return /nan/i.test(m[2]) ? NaN : m[1]==='-' ? -Infinity : Infinity;
-      return undefined;
-    }
-    // int() of a str.isdigit() class field: any Unicode decimal digits.
-    function pyInt(t){
-      if(/^\d+$/.test(t)) return Number(t);
-      if(!/^\p{Nd}+$/u.test(t)) return undefined;
-      let v=0;
-      for(const ch of t){
-        let cp=ch.codePointAt(0), start=cp;
-        while(/\p{Nd}/u.test(String.fromCodePoint(start-1))) start--;   // digits come in runs of ten
-        v=v*10+((cp-start)%10);
-      }
-      return v;
-    }
+    // Numbers as irs accepts them (NUMBER_RE in irs/dataset/labels.py): ASCII
+    // decimals with an optional exponent ('0.5', '.5', '5e-1'); no underscores,
+    // inf, nan, hex or non-ASCII digits. Returns undefined for anything else.
+    const IRS_NUMBER=/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$/;
+    const pyFloat=t=>IRS_NUMBER.test(t) ? Number(t) : undefined;
+    // Class ids as irs accepts them (CLASS_ID_RE): ASCII digits only.
+    const pyInt=t=>/^[0-9]+$/.test(t) ? Number(t) : undefined;
     // One line's fields, or the reason irs would give for rejecting it.
     function parseFields(line){
       const f=pySplit(line);
