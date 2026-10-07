@@ -23,6 +23,7 @@ Tick each line. Each line was added with the change it covers.
 ### Core
 
 - [ ] Open a folder that has `Images/`, `Labels/` and `classes.txt`; boxes from existing label files show on the right images, and **Download Bundle** writes label files whose lines read `<class> <x> <y> <w> <h>` with six decimals.
+- [ ] Delete an image: the next image appears with its own picture and its own boxes (not the deleted picture).
 
 ### Sample round
 

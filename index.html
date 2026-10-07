@@ -838,11 +838,12 @@
 
     async function loadImageAtIndex(idx){
       if(idx<0||idx>=imageMetadata.length) return;
-      const meta=imageMetadata[idx]; let img=imageCache.get(idx);
+      // Cached by name: indexes shift when an image is deleted.
+      const meta=imageMetadata[idx]; let img=imageCache.get(meta.name);
       if(!img){
         img=new Image(); const blob=meta.file; img.src=URL.createObjectURL(blob);
         await new Promise((res,rej)=>{ img.onload=()=>res(); img.onerror=()=>rej('Load failed'); });
-        imageCache.set(idx,img);
+        imageCache.set(meta.name,img);
       }
       meta.loaded=true; meta.img=img;
       boxes=[...labels[idx]||[]]; selectedBoxIndex=-1; updateBoxList(); updateZoomLevel(); scheduleDraw();
@@ -1167,11 +1168,10 @@ Generated: ${new Date().toISOString()}`;
     }
 
     function cleanupMemory(){
-      const cur=currentImageIndex, keep=[];
-      for(let i=Math.max(0,cur-5); i<=Math.min(imageMetadata.length-1,cur+5); i++) keep.push(i);
-      for(const [idx] of imageCache.c?.entries?.()||imageCache.cache.entries()){
-        if(!keep.includes(idx)){ (imageCache.c||imageCache.cache).delete(idx); if(imageMetadata[idx]){ imageMetadata[idx].loaded=false; imageMetadata[idx].img=null; } }
-      }
+      const cur=currentImageIndex, keep=new Set();
+      for(let i=Math.max(0,cur-5); i<=Math.min(imageMetadata.length-1,cur+5); i++) keep.add(imageMetadata[i].name);
+      for(const name of [...imageCache.c.keys()]) if(!keep.has(name)) imageCache.c.delete(name);
+      imageMetadata.forEach(m=>{ if(!keep.has(m.name)){ m.loaded=false; m.img=null; } });
       $("loadedImages").textContent=imageCache.size();
     }
 
