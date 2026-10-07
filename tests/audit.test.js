@@ -453,12 +453,31 @@ test('R5: replacing a broken status file never overwrites an earlier backup', { 
   await putFolder(b, 'round', files);
   await openRound(b);
   await b.evaluate(`document.getElementById('saveBannerReplace').click()`);
+  await b.waitFor(`document.getElementById('noticeBannerMsg').textContent.includes('kept as image_status.json.')`);
   await settle(b);
   const disk = await getFolder(b, 'round');
   assert.equal(disk['image_status.json.bak'].toString(), 'an older backup', 'untouched');
   const bak = Object.keys(disk).filter(k => /^image_status\.json\.\d{8}T\d{6}Z(-\d+)?\.bak$/.test(k));
   assert.equal(bak.length, 1);
   assert.equal(disk[bak[0]].toString(), '{ broken');
+}));
+
+test('R7: a label file that keeps failing does not hold up the other files or the status file', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await b.evaluate(`(() => { const H = FileSystemFileHandle.prototype, cw = H.createWritable;
+    H.createWritable = function (o) { return this.name === '${IMG0}.txt' ? Promise.reject(new DOMException('locked by another program (simulated)', 'NoModificationAllowedError')) : cw.call(this, o); }; })()`);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });          // image 0: cannot be written
+  await b.key('d'); await loaded(b, 1); await b.evaluate('YOLOUI.fitToScreen()');
+  await drag(b, { x: 0.40, y: 0.80 }, { x: 0.50, y: 0.90 });          // image 1: fine
+  await b.key(' ', { shift: true }); await loaded(b, 2);               // a status change
+  await sleep(1500);
+  const disk = await getFolder(b, 'round');
+  const one = 'clark_ave_01__a1b2c3d4__f010808';
+  assert.equal(lineCount(disk[`Labels/${one}.txt`]), 1, 'the next file was written');
+  assert.equal(JSON.parse(disk['image_status.json']).find(r => r.name === `${one}.jpg`).status, 'reviewed', 'the status file was written');
+  assert.match(await b.evaluate(`document.getElementById('saveBannerMsg').textContent`), new RegExp(`Labels/${IMG0}\.txt.*locked by another program`));
+  assert.equal((await snap(b)).unsaved, 1);
 }));
 
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

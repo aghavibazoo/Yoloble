@@ -1051,12 +1051,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // diskText / diskStatus: what the folder holds, as last read or written.
     // diskRaw: label file text exactly as read (folders only), badEncoding: files that are not UTF-8.
     // statusText: image_status.json as Yoloble last read or wrote it (null: none).
-    const save={statusText:null, pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskRaw:new Map(), badEncoding:new Set(), diskStatus:new Map(), forceRewrite:new Set(), inFlight:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
+    const save={statusText:null, fileErrors:new Map(), pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskRaw:new Map(), badEncoding:new Set(), diskStatus:new Map(), forceRewrite:new Set(), inFlight:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
     let flushPromise=null;
 
     function resetSaveState(){
       clearTimeout(save.timer); clearTimeout(save.retry);
-      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.inFlight.clear(); save.diskRaw.clear(); save.badEncoding.clear(); save.statusText=null; save.error=null; save.lastSaved=null;
+      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.inFlight.clear(); save.fileErrors.clear(); save.diskRaw.clear(); save.badEncoding.clear(); save.statusText=null; save.error=null; save.lastSaved=null;
       hideSaveBanner(); updateSaveIndicator();
     }
     const unsavedCount=()=>save.pendingLabels.size+(save.pendingStatus?1:0);
@@ -1176,41 +1176,63 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       updateSaveIndicator();
       return flushPromise;
     }
+    // A label file that fails to write waits (5 s, doubling up to a minute)
+    // while the other files and the status file are still written.
+    const SAVE_BACKOFF_MAX_MS=60000;
     async function flushOnce(){
       const target=folder;
-      try{
-        // Names only: each file's text is read when its turn comes, so an edit
-        // made while an earlier file was being written is the one written.
-        for(const name of [...save.pendingLabels.keys()]){
-          const text=save.pendingLabels.get(name);
-          if(text===undefined) continue;
-          save.pendingLabels.delete(name); save.inFlight.set(name,text);
-          try{ await writeLabelFile(name,text);
-            const fn=folder.labelFiles.get(name)||YoloCore.labelFileNameFor(name);
-            if(folder.labelFileList && !folder.labelFileList.includes(fn)) folder.labelFileList.push(fn); }
-          catch(e){ save.inFlight.delete(name); if(!save.pendingLabels.has(name)) save.pendingLabels.set(name,text); throw e; }
+      let failure=null;
+      const fail=(what,e)=>{ console.error(`Saving ${what} failed`,e); failure=failure||e; };
+      // Names only: each file's text is read when its turn comes, so an edit
+      // made while an earlier file was being written is the one written.
+      for(const name of [...save.pendingLabels.keys()]){
+        const text=save.pendingLabels.get(name);
+        if(text===undefined) continue;
+        const prev=save.fileErrors.get(name);
+        if(prev && prev.until>Date.now()) continue; // still waiting before the next try
+        save.pendingLabels.delete(name); save.inFlight.set(name,text);
+        try{
+          await writeLabelFile(name,text);
+          const fn=folder.labelFiles.get(name)||YoloCore.labelFileNameFor(name);
+          if(folder.labelFileList && !folder.labelFileList.includes(fn)) folder.labelFileList.push(fn);
+          save.fileErrors.delete(name);
+        }catch(e){
           save.inFlight.delete(name);
           if(folder!==target) return;
-          save.diskText.set(name,text); save.diskRaw.set(name,text); save.badEncoding.delete(name); save.forceRewrite.delete(name);
+          if(!save.pendingLabels.has(name)) save.pendingLabels.set(name,text);
+          const tries=(prev?.tries||0)+1;
+          save.fileErrors.set(name,{error:e, tries, until:Date.now()+Math.min(SAVE_BACKOFF_MAX_MS, SAVE_RETRY_MS*2**(tries-1))});
+          fail(labelPathFor(name),e);
+          if(isPermissionError(e)) break; // no file can be written: stop here
+          continue;
         }
-        if(save.pendingLabels.size) save.again=true; // changed while writing: write again
-        if(save.pendingStatus){
-          save.pendingStatus=false;
-          try{ await writeStatusFile(); }catch(e){ save.pendingStatus=true; throw e; }
-        }
+        save.inFlight.delete(name);
         if(folder!==target) return;
-        save.error=null; save.lastSaved=new Date(); clearTimeout(save.retry);
-        if(folder.writable) hideSaveBanner();
-        scheduleSessionSave();
-      }catch(e){
-        if(folder!==target) return;
-        console.error('Save failed',e);
-        save.error=e; showSaveBanner();
-        clearTimeout(save.retry);
-        if(!isPermissionError(e)) save.retry=setTimeout(()=>flushSaves(),SAVE_RETRY_MS);
+        save.diskText.set(name,text); save.diskRaw.set(name,text); save.badEncoding.delete(name); save.forceRewrite.delete(name);
       }
+      if(folder!==target) return;
+      if(save.pendingLabels.size && !failure && !save.fileErrors.size) save.again=true; // changed while writing: write again
+      if(save.pendingStatus && !(failure && isPermissionError(failure))){
+        save.pendingStatus=false;
+        try{ await writeStatusFile(); }catch(e){ save.pendingStatus=true; fail('image_status.json',e); }
+      }
+      if(folder!==target) return;
+      clearTimeout(save.retry);
+      if(failure || save.fileErrors.size){
+        save.error=failure || [...save.fileErrors.values()][0].error;
+        showSaveBanner();
+        if(!isPermissionError(save.error)){
+          const waits=[...save.fileErrors.values()].map(f=>f.until-Date.now());
+          save.retry=setTimeout(()=>flushSaves(), Math.max(200, Math.min(SAVE_RETRY_MS, ...waits)));
+        }
+        return;
+      }
+      save.error=null; save.lastSaved=new Date();
+      if(folder.writable) hideSaveBanner();
+      scheduleSessionSave();
     }
-    function retrySave(){ save.error=null; hideSaveBanner(); return flushSaves(); }
+    const labelPathFor=name=>`Labels/${folder?.labelFiles.get(name)||YoloCore.labelFileNameFor(name)}`;
+    function retrySave(){ save.error=null; save.fileErrors.forEach(f=>{ f.until=0; }); hideSaveBanner(); return flushSaves(); }
     async function replaceBrokenStatusFile(){
       if(!folder?.statusProblem || !folder.statusRaw) return;
       if(folder.otherWindow){ alert(`"${folder.name}" is open in another Yoloble window; replace image_status.json there.`); return; }
@@ -1239,7 +1261,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         ? `${folder.statusProblem}. To keep the reviews it may hold, "${folder.name}" was opened read-only: changes are NOT saved. Fix the file and reopen the folder, or replace it with the statuses shown here (the old file is kept as ${STATUS_BACKUP_PATTERN}).`
         : !folder.writable
         ? `"${folder.name}" was opened read-only, so changes are NOT saved into it. Allow saving, or use Download Bundle before you close Yoloble.`
-        : `Could not save to "${folder.name}": ${save.error?.message||save.error}. ${unsavedCount()} change(s) are not on disk yet. `+
+        : `Could not save to "${folder.name}": ${save.fileErrors.size ? [...save.fileErrors.keys()].slice(0,3).map(labelPathFor).join(', ')+(save.fileErrors.size>3?` and ${save.fileErrors.size-3} more`:'')+' — ' : ''}${save.error?.message||save.error}. ${unsavedCount()} change(s) are not on disk yet. `+
           (perm ? 'Allow saving to continue.' : `Retrying every ${SAVE_RETRY_MS/1000} s. Do not close Yoloble until this message goes away, or use Download Bundle.`);
       $("saveBannerGrant").style.display=perm?'':'none';
       $("saveBannerRetry").style.display=folder.writable?'':'none';
