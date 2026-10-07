@@ -118,6 +118,11 @@
     .reason-chip{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:10px;white-space:nowrap;color:#fff}
     .reason-chip.rare_class{background:#8e44ad}.reason-chip.uncertainty{background:#d35400}.reason-chip.disagreement{background:#c0392b}.reason-chip.random{background:#5d6d7e}.reason-chip.other{background:#34495e}.reason-chip.missing{background:#a32020}
     .round-info{font-size:13px;color:#bbb;white-space:nowrap}
+    .check-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;background:#3a2a2a;margin-bottom:4px;font-size:12px;cursor:pointer;border-left:3px solid #e74c3c}
+    .check-item.warning{background:#3a3424;border-left-color:#f39c12}
+    .check-item .msg{flex:1}
+    .check-item button{background:#555;color:#fff;border:none;padding:3px 8px;border-radius:3px;cursor:pointer;font-size:11px;white-space:nowrap}
+    .check-ok{font-size:12px;color:#7dd99a}
     .picker{position:absolute;left:50%;top:40px;transform:translateX(-50%);z-index:50;background:#2d2d2d;border:1px solid #666;border-radius:6px;box-shadow:0 8px 30px rgba(0,0,0,.6);width:340px;padding:10px;display:none}
     .picker.show{display:block}
     .picker .title{font-size:12px;color:#bbb;margin-bottom:6px}
@@ -206,6 +211,11 @@
         <input class="class-search" id="classSearch" placeholder="Search classes…" autocomplete="off" spellcheck="false" oninput="YOLOUI._renderClassList()">
         <div class="class-list-pick" id="classSelector"></div>
         <div style="font-size:11px;color:#aaa;margin-top:6px">Keys 0–9, Shift+0–9 for 10–19, C to search. With a box selected they change that box.</div>
+      </div>
+
+      <div class="section">
+        <h3>Checks</h3>
+        <div id="checksPanel"></div>
       </div>
 
       <div class="section">
@@ -531,11 +541,94 @@
     }
     const confirmBox=({pre,conf,...b})=>b;
 
+    // ----- validation -----
+    // Mirrors irs/dataset/labels.py check_label_bytes() and the label rules in
+    // irs configs/pipeline.yaml (dataset.label_rules), with the same issue codes,
+    // so what passes here passes irs ingest.
+    const RULES={edgeTolerance:1e-6, duplicateIou:0.95};
+    const MIN_BOX_PX=4, MIN_BOX_NORM=0.002; // "near zero size" (warning only; irs accepts any w,h > 0)
+    function checkLabelText(text, numClasses, rules=RULES){
+      const src=String(text ?? '');
+      if(!src.trim()) return {boxes:[], issues:[]};
+      const boxes=[], boxLines=[], issues=[];
+      splitLines(src).forEach((line,i)=>{
+        const ln=i+1, add=(code,message)=>issues.push({code,line:ln,message});
+        if(!line.trim()){ add('blank_line','blank line'); return; }
+        const f=line.trim().split(/\s+/);
+        if(f.length!==5){ add('field_count',`expected 5 fields, got ${f.length}`); return; }
+        if(!/^\d+$/.test(f[0])){ add('bad_class_id',`class id '${f[0]}' is not an integer`); return; }
+        const cls=Number(f[0]);
+        if(cls>=numClasses){ add('class_out_of_range',`class id ${cls} not in 0..${numClasses-1}`); return; }
+        const c=f.slice(1).map(Number);
+        const badAt=c.findIndex(v=>!Number.isFinite(v));
+        if(badAt>=0){ add('bad_number',`'${f[badAt+1]}' is not a number`); return; }
+        if(c.some(v=>v<0 || v>1)){ add('coord_out_of_range',`coordinates ${f.slice(1).join(' ')} not all in [0, 1]`); return; }
+        const b={cls, xc:c[0], yc:c[1], w:c[2], h:c[3]};
+        if(b.w<=0 || b.h<=0){ add('degenerate_box',`zero-size box w=${f[3]} h=${f[4]}`); return; }
+        const k=corners(b), overrun=Math.max(-k.x1,-k.y1,k.x2-1,k.y2-1,0);
+        if(overrun>rules.edgeTolerance) add('box_outside_image',`box extends ${overrun.toFixed(6)} (normalised) beyond the image edge`);
+        for(let j=0;j<boxes.length;j++){
+          if(boxes[j].cls===b.cls && iou(boxes[j],b)>rules.duplicateIou){ add('duplicate_box',`same class and IoU > ${rules.duplicateIou} with line ${boxLines[j]}`); break; }
+        }
+        boxes.push(b); boxLines.push(ln);
+      });
+      return {boxes, issues};
+    }
+    const ISSUE_TEXT={
+      class_out_of_range:'class is not in the class list', bad_class_id:'class is not a whole number',
+      coord_out_of_range:'coordinates outside the image', box_outside_image:'extends outside the image',
+      degenerate_box:'has zero size', duplicate_box:'duplicates another box (same class, overlap above 95%)',
+      tiny_box:'is near zero size', bad_number:'has a value that is not a number', field_count:'malformed line', blank_line:'blank line',
+    };
+    // Issues for the boxes of one image, as they would be written. Each issue:
+    // {code, box (index), severity 'error' (irs ingest rejects it) or 'warning', message, fix}.
+    function checkImageBoxes(boxes, numClasses, size={}, rules=RULES){
+      const out=[];
+      checkLabelText(serializeLabels(boxes), numClasses, rules).issues.forEach(({code,line,message})=>{
+        const box=line-1, dup=/with line (\d+)/.exec(message);
+        out.push({code, box, severity:'error', detail:message, other:dup?Number(dup[1])-1:null,
+                  message: dup ? `Box ${box+1} duplicates box ${dup[1]} (same class, overlap above 95%)` : `Box ${box+1} ${ISSUE_TEXT[code]||message}`,
+                  fix:code==='box_outside_image'||code==='coord_out_of_range'?'clip':code==='class_out_of_range'?'class':'delete'});
+      });
+      boxes.forEach((b,i)=>{
+        if(out.some(x=>x.box===i && x.code==='degenerate_box')) return;
+        const tiny = size.width>0 && size.height>0 ? (b.w*size.width<MIN_BOX_PX || b.h*size.height<MIN_BOX_PX) : (b.w<MIN_BOX_NORM || b.h<MIN_BOX_NORM);
+        if(tiny){
+          const px = size.width>0 ? ` (${Math.max(0,b.w*size.width).toFixed(1)}×${Math.max(0,b.h*size.height).toFixed(1)} px)` : '';
+          out.push({code:'tiny_box', box:i, severity:'warning', message:`Box ${i+1} is near zero size${px}`, fix:'delete'});
+        }
+      });
+      return out.sort((a,b)=>a.box-b.box || (a.severity===b.severity?0:a.severity==='error'?-1:1));
+    }
+    // Keeps a box inside the image. 'shift' moves it in (size kept where it
+    // fits), 'clip' cuts off what is outside. Returns null if nothing is left.
+    function clampBox(b, mode='clip'){
+      let {x1,y1,x2,y2}=corners(b);
+      if(x1>=0 && y1>=0 && x2<=1 && y2<=1) return b.w>0 && b.h>0 ? b : null;
+      if(mode==='shift'){
+        const w=Math.min(x2-x1,1), h=Math.min(y2-y1,1);
+        x1=Math.min(Math.max(x1,0),1-w); y1=Math.min(Math.max(y1,0),1-h); x2=x1+w; y2=y1+h;
+      } else { x1=Math.max(0,x1); y1=Math.max(0,y1); x2=Math.min(1,x2); y2=Math.min(1,y2); }
+      if(!(x2>x1 && y2>y1)) return null;
+      return {...b, xc:(x1+x2)/2, yc:(y1+y2)/2, w:x2-x1, h:y2-y1};
+    }
+    // classes.txt must equal round.json's class list, line for line.
+    function compareClassLists(classesText, roundClasses){
+      if(classesText===null || classesText===undefined) return 'classes.txt is missing';
+      const lines=splitLines(String(classesText).replace(/^﻿/,''));
+      if(lines.length===roundClasses.length && lines.every((l,i)=>l===roundClasses[i])) return null;
+      const n=Math.max(lines.length,roundClasses.length);
+      for(let i=0;i<n;i++) if(lines[i]!==roundClasses[i])
+        return `classes.txt line ${i+1} is ${lines[i]===undefined?'missing':JSON.stringify(lines[i])}, round.json has ${roundClasses[i]===undefined?'no class there':JSON.stringify(roundClasses[i])}`;
+      return null;
+    }
+
     return { splitLines, parseLabelText, serializeLabels, corners, iou, labelFileNameFor, isSafeFileName,
              parseStatusJson, serializeStatusJson, canonicalLabelText, planRecovery,
              PALETTE, classColor, textColorOn, classForKey, searchClasses,
              STATUSES, autoStatus, isDecided, reviewProgress,
-             ROUND_FORMATS, parseRoundJson, prelabelApplies, attachPrelabels, confirmBox };
+             ROUND_FORMATS, parseRoundJson, prelabelApplies, attachPrelabels, confirmBox,
+             RULES, checkLabelText, checkImageBoxes, clampBox, compareClassLists };
   })();
   if(typeof module!=='undefined' && module.exports) module.exports=YoloCore;
   </script>
@@ -763,12 +856,12 @@
     let round=null;  // parsed round.json of the open folder (YoloCore.parseRoundJson), or null
     const SAVE_DEBOUNCE_MS=400, SAVE_RETRY_MS=5000;
     // diskText / diskStatus: what the folder holds, as last read or written.
-    const save={pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskStatus:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
+    const save={pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskStatus:new Map(), forceRewrite:new Set(), timer:null, retry:null, error:null, lastSaved:null, again:false};
     let flushPromise=null;
 
     function resetSaveState(){
       clearTimeout(save.timer); clearTimeout(save.retry);
-      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.error=null; save.lastSaved=null;
+      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.error=null; save.lastSaved=null;
       hideSaveBanner(); updateSaveIndicator();
     }
     const unsavedCount=()=>save.pendingLabels.size+(save.pendingStatus?1:0);
@@ -800,9 +893,12 @@
       if(session){ session.edited.add(name); scheduleSessionSave(); }
       if(!folder) return;
       const text=YoloCore.serializeLabels(arr), disk=save.diskText.has(name)?save.diskText.get(name):null;
+      // A file with unreadable lines is only rewritten (dropping them) after a
+      // real edit or an explicit Rewrite, not just because the image was shown.
+      const diskBoxes = disk===null ? null : YoloCore.serializeLabels(YoloCore.parseLabelText(disk).boxes);
       // No file and no boxes mean the same, except on a reviewed image, where an
       // empty file records a confirmed empty frame.
-      const same = disk===text || (disk===null && text==='' && statusOfName(name)!=='reviewed');
+      const same = !save.forceRewrite.has(name) && (disk===text || diskBoxes===text && disk!==null || (disk===null && text==='' && statusOfName(name)!=='reviewed'));
       if(same) save.pendingLabels.delete(name); else save.pendingLabels.set(name,text);
       scheduleSave();
     }
@@ -832,7 +928,7 @@
         for(const [name,text] of [...save.pendingLabels]){
           await writeLabelFile(name,text);
           if(folder!==target) return;
-          save.diskText.set(name,text);
+          save.diskText.set(name,text); save.forceRewrite.delete(name);
           if(save.pendingLabels.get(name)===text) save.pendingLabels.delete(name);
         }
         if(save.pendingStatus){
@@ -1330,7 +1426,7 @@
         await new Promise((res,rej)=>{ img.onload=()=>res(); img.onerror=()=>rej('Load failed'); });
         imageCache.set(meta.name,img);
       }
-      meta.loaded=true; meta.img=img;
+      meta.loaded=true; meta.img=img; meta.width=img.naturalWidth; meta.height=img.naturalHeight;
       boxes=[...labels[idx]||[]]; boxesOwner=meta.name; selectedBoxIndex=-1; updateBoxList(); updateZoomLevel(); scheduleDraw(); updateUndoButton();
       if(unsavedCount()) scheduleSave(0);
       scheduleSessionSave();
@@ -1426,10 +1522,17 @@
       const sc=Object.entries(e.scores||{}).filter(([,v])=>typeof v==='number').map(([k,v])=>`${k} ${v.toFixed(2)}`).join(' · ');
       banner.title=sc ? `Selection scores: ${sc}` : '';
     }
-    function markReviewed(){ return queueNav(()=>markReviewedNow()); }
-    async function markReviewedNow({advance=true}={}){
+    function markReviewed(force=false){ return queueNav(()=>markReviewedNow({force})); }
+    async function markReviewedNow({advance=true, force=false}={}){
       if(boxesOwner===null) return;
       const name=boxesOwner;
+      const issues=currentIssues();
+      if(issues.length && !force){
+        const first=issues[0];
+        if(first.box>=0){ selectedBoxIndex=first.box; updateBoxList(); scheduleDraw(); }
+        showToast(`Not marked reviewed: ${first.message}${issues.length>1?` (and ${issues.length-1} more)`:''}. Fix it under Checks, or press Shift+Space to mark it reviewed anyway.`, 7000);
+        return;
+      }
       if(boxes.some(b=>b.pre)) boxes=boxes.map(YoloCore.confirmBox); // reviewing confirms every box
       commitEdit();
       setStatus(name,'reviewed');
@@ -1484,12 +1587,79 @@
       if(!folder) para('warn','These images were not opened from a folder, so nothing is saved to disk: use Download Bundle.');
       else if(!folder.writable || unsaved) para('err', `${unsaved||'Some'} change(s) are NOT saved in "${folder.name}". Fix saving (see the banner) or use Download Bundle before closing Yoloble.`);
       if(open.length){ para('warn', `${open.length} image${open.length>1?'s are':' is'} not reviewed. irs ingest stops on unreviewed images unless it is run with --allow-unreviewed (they then stay queued):`); nameList(open); }
-      const problems=open.length>0 || !folder || !folder.writable || unsaved>0;
-      if(!problems) para('ok', `Every image is reviewed or deleted and everything is saved in "${folder.name}". The round is ready for irs ingest.`);
+      const checks=roundIssues();
+      const issueList=items=>{ const ul=document.createElement('ul'); items.slice(0,30).forEach(it=>{ const li=document.createElement('li');
+          if(it.name){ const a=document.createElement('span'); a.className='link'; a.textContent=it.name; a.onclick=()=>{ hideModal(); gotoName(it.name); }; li.append(a, document.createTextNode(': '+it.text)); }
+          else li.textContent=it.text;
+          ul.appendChild(li); });
+        if(items.length>30){ const li=document.createElement('li'); li.textContent=`…and ${items.length-30} more`; ul.appendChild(li); } body.appendChild(ul); };
+      if(checks.errors.length){ para('err', `${checks.errors.length} problem${checks.errors.length>1?'s':''} irs ingest would reject:`); issueList(checks.errors); }
+      if(checks.warnings.length){ para('warn', `${checks.warnings.length} thing${checks.warnings.length>1?'s':''} worth a look (ingest accepts them):`); issueList(checks.warnings); }
+      const problems=open.length>0 || !folder || !folder.writable || unsaved>0 || checks.errors.length>0;
+      if(!problems) para('ok', `Every image is reviewed or deleted, the labels pass the irs checks and everything is saved in "${folder.name}". The round is ready for irs ingest.`);
       const buttons=[];
       if(open.length) buttons.push({label:'Go to first unreviewed', primary:true, onClick:()=>gotoName(open.find(n=>indexOfName(n)>=0)||open[0])});
       buttons.push({label:'Close', primary:!open.length});
       showModal(problems?'Round not finished yet':'Round finished', body, buttons);
+    }
+
+    // ----- checks (validation) -----
+    const numClassesForCheck=()=>round?.classes?.length || CLASS_NAMES.length;
+    // Label file on disk with lines Yoloble could not read (and has not rewritten yet).
+    function unreadableLines(name){
+      if(!save.diskText.has(name) || save.pendingLabels.has(name)) return 0;
+      return YoloCore.parseLabelText(save.diskText.get(name)).bad.length;
+    }
+    function imageIssues(i){
+      const meta=imageMetadata[i]; if(!meta) return [];
+      const arr = meta.name===boxesOwner ? boxes : (labels[i]||[]);
+      const out=YoloCore.checkImageBoxes(arr, numClassesForCheck(), {width:meta.width, height:meta.height});
+      const bad=unreadableLines(meta.name);
+      if(bad) out.unshift({code:'unreadable_lines', box:-1, severity:'error', message:`The label file has ${bad} unreadable line${bad>1?'s':''}, which irs ingest rejects`, fix:'rewrite'});
+      return out;
+    }
+    const currentIssues=()=>{ const i=boxesOwner===null?-1:indexOfName(boxesOwner); return i<0?[]:imageIssues(i); };
+    function renderChecks(){
+      const panel=$("checksPanel"); if(!panel) return;
+      panel.innerHTML='';
+      if(boxesOwner===null){ panel.textContent='No image loaded'; return; }
+      const issues=currentIssues();
+      if(!issues.length){ const ok=document.createElement('div'); ok.className='check-ok'; ok.textContent='No problems on this image ✓'; panel.appendChild(ok); return; }
+      const FIX_LABEL={clip:'Clip to image', delete:'Delete box', class:'Pick class', rewrite:'Rewrite file'};
+      issues.forEach(iss=>{
+        const row=document.createElement('div'); row.className='check-item '+iss.severity;
+        const msg=document.createElement('span'); msg.className='msg'; msg.textContent=iss.message; row.appendChild(msg);
+        row.onclick=()=>{ if(iss.box>=0){ selectedBoxIndex=iss.box; updateBoxList(); scheduleDraw(); } };
+        const b=document.createElement('button'); b.textContent=FIX_LABEL[iss.fix];
+        b.onclick=e=>{ e.stopPropagation(); fixIssue(iss); };
+        row.appendChild(b); panel.appendChild(row);
+      });
+    }
+    function fixIssue(iss){
+      if(iss.fix==='rewrite'){ save.forceRewrite.add(boxesOwner); commitEdit(); scheduleSave(0); renderChecks(); return; }
+      if(!boxes[iss.box]) return;
+      if(iss.fix==='class'){ selectedBoxIndex=iss.box; updateBoxList(); scheduleDraw(); openClassPicker(); return; }
+      saveState();
+      const fixed = iss.fix==='clip' ? YoloCore.clampBox(YoloCore.confirmBox(boxes[iss.box]),'clip') : null;
+      if(fixed) boxes[iss.box]=fixed; else boxes.splice(iss.box,1);
+      selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); commitEdit();
+    }
+    // Every problem in the round, for Finish round.
+    function roundIssues(){
+      const errors=[], warnings=[];
+      if(round){
+        const cls=YoloCore.compareClassLists(folder?.classesText ?? null, round.classes||[]);
+        if(round.classes && cls) errors.push({text:`${cls}. irs ingest rejects a round whose classes.txt differs from round.json.`});
+        const inRound=new Set(round.images.keys()), names=allImageNames();
+        names.filter(n=>!inRound.has(n)).forEach(n=>errors.push({name:n, text:'not listed in round.json'}));
+        const have=new Set(names);
+        [...inRound].filter(n=>!have.has(n)).forEach(n=>warnings.push({text:`${n} is listed in round.json but missing from Images/`}));
+      }
+      allImageNames().forEach(n=>{ const st=statusOfName(n); if(!YoloCore.STATUSES.includes(st)) errors.push({name:n, text:`unknown status "${st}" in image_status.json`}); });
+      imageMetadata.forEach((m,i)=>{
+        imageIssues(i).forEach(iss=>(iss.severity==='error'?errors:warnings).push({name:m.name, text:iss.message}));
+      });
+      return {errors, warnings};
     }
 
     // ----- small UI helpers -----
@@ -1523,10 +1693,19 @@
       const sw=RS.scaleX*RS.imgW, sh=RS.scaleY*RS.imgH;
       ctx.drawImage(meta.img, RS.dx, RS.dy, sw, sh);
       if(!showBoxes||!boxes.length) return;
+      const issueBoxes=new Map();
+      currentIssues().forEach(x=>{ if(x.box>=0 && issueBoxes.get(x.box)!=='error') issueBoxes.set(x.box,x.severity); });
       for(let i=0;i<boxes.length;i++){
         const ib=normToImage(boxes[i]);
         const p1=imageToScreen(ib.x1,ib.y1), p2=imageToScreen(ib.x2,ib.y2);
-        const w=p2.x-p1.x, h=p2.y-p1.y; if(w<2||h<2) continue;
+        const w=p2.x-p1.x, h=p2.y-p1.y, flag=issueBoxes.get(i);
+        if(flag){
+          // A ring around boxes with problems, so even a box too small to see can be found.
+          const cx=(p1.x+p2.x)/2, cy=(p1.y+p2.y)/2, r=Math.max(12, Math.hypot(w,h)/2+6);
+          ctx.save(); ctx.lineWidth=2; ctx.setLineDash([4,3]); ctx.strokeStyle=flag==='error'?'#ff3b30':'#ff9f0a';
+          ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke(); ctx.restore();
+        }
+        if(w<2||h<2) continue;
         const sel=i===selectedBoxIndex, col=colorOf(boxes[i].cls), pre=!!boxes[i].pre;
         if(sel){ ctx.lineWidth=5; ctx.setLineDash([]); ctx.strokeStyle='rgba(0,0,0,.7)'; ctx.strokeRect(p1.x,p1.y,w,h); }
         // Unchecked model boxes: dashed, tag on a dark background with the confidence.
@@ -1561,6 +1740,7 @@
     function saveCurrentLabels(){ const i=boxesOwner===null ? -1 : indexOfName(boxesOwner); if(i>=0) labels[i]=[...boxes]; }
 
     function updateBoxList(){
+      renderChecks();
       const list=$("boxList"); list.innerHTML='';
       boxes.forEach((b,i)=>{
         const it=document.createElement('div'); it.className=`box-item ${i===selectedBoxIndex?'selected':''}`;
@@ -1733,6 +1913,8 @@ Generated: ${new Date().toISOString()}`;
         labels[idx++]=[];
       }
 
+      let classesText=null;
+      if(classFileHandle?.name==='classes.txt'){ try{ classesText=await (await classFileHandle.getFile()).text(); }catch{} }
       if(classFileHandle){
         try{
           const file=await classFileHandle.getFile();
@@ -1743,7 +1925,7 @@ Generated: ${new Date().toISOString()}`;
 
       const nameSet=new Set(allImageNames);
       const extraStatus=new Map([...statusEntries].filter(([n])=>!nameSet.has(n)));
-      folder={root:rootHandle, name:rootHandle.name, writable, labelsDir:labelsHandle, imageNames:allImageNames, labelFiles:new Map(), extraStatus};
+      folder={root:rootHandle, name:rootHandle.name, writable, labelsDir:labelsHandle, imageNames:allImageNames, labelFiles:new Map(), extraStatus, classesText};
 
       if(labelsHandle){
         const map=new Map();
@@ -1830,7 +2012,7 @@ Generated: ${new Date().toISOString()}`;
       if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.type==='checkbox') return;
       if(modalOpen()){ if(e.key==='Escape') hideModal(); return; }
       if((e.ctrlKey||e.metaKey) && !e.shiftKey && (e.key==='z'||e.key==='Z')){ e.preventDefault(); undo(); return; }
-      if(e.code==='Space' && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); if(!e.repeat) markReviewed(); return; }
+      if(e.code==='Space' && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); if(!e.repeat) markReviewed(e.shiftKey); return; }
       if((e.key==='n'||e.key==='N') && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); markNoLabel(); return; }
       if(e.key==='Delete'||e.key==='Backspace'){ if(selectedBoxIndex!==-1){ saveState(); boxes.splice(selectedBoxIndex,1); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); commitEdit(); } }
       else if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A'){ e.preventDefault(); previousImage(); }
@@ -1898,8 +2080,15 @@ Generated: ${new Date().toISOString()}`;
       if(dragMode==='create'){
         const s=screenToImage(dragStart.x,dragStart.y), c=screenToImage(p.x,p.y);
         const x1=Math.min(s.x,c.x), y1=Math.min(s.y,c.y), x2=Math.max(s.x,c.x), y2=Math.max(s.y,c.y);
-        if(x2-x1>5 && y2-y1>5){ saveState(); boxes.push(imageToNorm(x1,y1,x2,y2)); selectedBoxIndex=boxes.length-1; updateBoxList(); commitEdit(); }
-      } else if(dragMode==='move'||dragMode==='resize'){ commitEdit(); }
+        if(x2-x1>5 && y2-y1>5){
+          const nb=YoloCore.clampBox(imageToNorm(x1,y1,x2,y2),'clip');
+          if(nb){ saveState(); boxes.push(nb); selectedBoxIndex=boxes.length-1; updateBoxList(); commitEdit(); }
+        }
+      } else if((dragMode==='move'||dragMode==='resize') && selectedBoxIndex!==-1 && boxes[selectedBoxIndex]){
+        const b=boxes[selectedBoxIndex], k=YoloCore.corners(b);
+        if(k.x1<0||k.y1<0||k.x2>1||k.y2>1){ const nb=YoloCore.clampBox(YoloCore.confirmBox(b), dragMode==='move'?'shift':'clip'); if(nb) boxes[selectedBoxIndex]=nb; }
+        updateBoxList(); commitEdit();
+      }
       isDragging=false; dragMode=null; resizeHandle=null; canvas.style.cursor='crosshair'; scheduleDraw();
     }
     function onWheel(e){ e.preventDefault(); const p=getCanvasPos(e); zoomAt(p.x,p.y, e.deltaY>0?0.9:1.1); }

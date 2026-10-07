@@ -215,3 +215,84 @@ test('attachPrelabels matches confidence by line, and confirmBox drops it', () =
   assert.deepEqual(C.confirmBox(pre[1]), { cls: 2, xc: 0.2, yc: 0.2, w: 0.1, h: 0.1 });
   assert.equal(C.serializeLabels(pre), C.serializeLabels(parsed), 'pre-label flags never reach the file');
 });
+
+test('checkLabelText reports the same issue codes as irs check_label_bytes', () => {
+  const codes = text => C.checkLabelText(text, 9).issues.map(i => [i.code, i.line]);
+  assert.deepEqual(codes(''), []);
+  assert.deepEqual(codes('  \n'), []);
+  assert.deepEqual(codes('0 0.5 0.5 0.1 0.1\n'), []);
+  assert.deepEqual(codes('0 0.5 0.5 0.1 0.1\n\n1 0.2 0.2 0.1 0.1\n'), [['blank_line', 2]]);
+  assert.deepEqual(codes('0 0.5 0.5 0.1\n'), [['field_count', 1]]);
+  assert.deepEqual(codes('1.0 0.5 0.5 0.1 0.1\n'), [['bad_class_id', 1]]);
+  assert.deepEqual(codes('-1 0.5 0.5 0.1 0.1\n'), [['bad_class_id', 1]]);
+  assert.deepEqual(codes('9 0.5 0.5 0.1 0.1\n'), [['class_out_of_range', 1]]);
+  assert.deepEqual(codes('0 0.5 x 0.1 0.1\n'), [['bad_number', 1]]);
+  assert.deepEqual(codes('0 1.2 0.5 0.1 0.1\n'), [['coord_out_of_range', 1]]);
+  assert.deepEqual(codes('0 0.5 0.5 0 0.1\n'), [['degenerate_box', 1]]);
+  assert.deepEqual(codes('0 0.98 0.5 0.1 0.1\n'), [['box_outside_image', 1]]);
+  assert.deepEqual(codes('0 0.95 0.5 0.1 0.1\n'), [], 'touching the edge is fine');
+  assert.deepEqual(codes('0 0.9500005 0.5 0.1 0.1\n'), [], 'within the 1e-6 edge tolerance');
+  assert.deepEqual(codes('0 0.5 0.5 0.2 0.2\n0 0.501 0.5 0.2 0.2\n'), [['duplicate_box', 2]]);
+  assert.deepEqual(codes('0 0.5 0.5 0.2 0.2\n1 0.501 0.5 0.2 0.2\n'), [], 'different classes are not duplicates');
+  assert.deepEqual(codes('0 0.5 0.5 0.2 0.2\n0 0.52 0.5 0.2 0.2\n'), [], 'IoU 0.82 is not a duplicate');
+});
+
+test('checkImageBoxes flags out-of-bounds, zero, duplicate, unknown-class and near-zero boxes by box', () => {
+  const boxes = [
+    { cls: 0, xc: 0.5, yc: 0.5, w: 0.2, h: 0.2 },
+    { cls: 0, xc: 0.5005, yc: 0.5, w: 0.2, h: 0.2 },  // duplicate of box 1
+    { cls: 1, xc: 0.99, yc: 0.5, w: 0.1, h: 0.1 },    // outside
+    { cls: 12, xc: 0.3, yc: 0.3, w: 0.1, h: 0.1 },    // class not in list
+    { cls: 2, xc: 0.7, yc: 0.7, w: 0.0015, h: 0.002 }, // near zero
+    { cls: 2, xc: 0.8, yc: 0.2, w: 0, h: 0.1 },        // zero
+  ];
+  const issues = C.checkImageBoxes(boxes, 9);
+  assert.deepEqual(issues.map(i => [i.box, i.code, i.severity, i.fix]), [
+    [1, 'duplicate_box', 'error', 'delete'],
+    [2, 'box_outside_image', 'error', 'clip'],
+    [3, 'class_out_of_range', 'error', 'class'],
+    [4, 'tiny_box', 'warning', 'delete'],
+    [5, 'degenerate_box', 'error', 'delete'],
+  ]);
+  assert.equal(issues[0].message, 'Box 2 duplicates box 1 (same class, overlap above 95%)');
+  assert.equal(issues[0].other, 0);
+  const px = C.checkImageBoxes([{ cls: 0, xc: 0.5, yc: 0.5, w: 2 / 640, h: 0.1 }], 9, { width: 640, height: 360 });
+  assert.equal(px[0].message, 'Box 1 is near zero size (2.0×36.0 px)');
+  assert.deepEqual(C.checkImageBoxes([{ cls: 0, xc: 0.5, yc: 0.5, w: 5 / 640, h: 5 / 360 }], 9, { width: 640, height: 360 }), []);
+});
+
+test('the sample round has exactly the deliberate problems', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const dir = path.join(__dirname, '..', 'samples', 'round_sample', 'Labels');
+  const found = {};
+  for (const f of fs.readdirSync(dir)) {
+    const boxes = C.parseLabelText(fs.readFileSync(path.join(dir, f), 'utf8')).boxes;
+    const issues = C.checkImageBoxes(boxes, 9, { width: 640, height: 360 });
+    if (issues.length) found[f] = issues.map(i => i.code);
+  }
+  assert.deepEqual(found, { 'clark_ave_01__e5f60718__f014209.txt': ['duplicate_box'], 'hwy7_east__0badc0de__f015197.txt': ['tiny_box'] });
+});
+
+test('clampBox shifts or clips boxes into the image', () => {
+  const near = (a, b) => Object.keys(b).forEach(k => assert.ok(Math.abs(a[k] - b[k]) < 1e-12, `${k}: ${a[k]} vs ${b[k]}`));
+  near(C.clampBox({ cls: 1, xc: 0.98, yc: 0.5, w: 0.1, h: 0.1 }, 'clip'), { cls: 1, xc: 0.965, yc: 0.5, w: 0.07, h: 0.1 });
+  near(C.clampBox({ cls: 1, xc: 0.98, yc: 0.5, w: 0.1, h: 0.1 }, 'shift'), { cls: 1, xc: 0.95, yc: 0.5, w: 0.1, h: 0.1 });
+  near(C.clampBox({ cls: 1, xc: -0.01, yc: 0.02, w: 0.1, h: 0.1 }, 'shift'), { cls: 1, xc: 0.05, yc: 0.05, w: 0.1, h: 0.1 });
+  assert.equal(C.clampBox({ cls: 1, xc: 1.5, yc: 0.5, w: 0.1, h: 0.1 }, 'clip'), null);
+  const inside = { cls: 0, xc: 0.5, yc: 0.5, w: 0.2, h: 0.2 };
+  assert.deepEqual(C.clampBox(inside), inside);
+  const clipped = C.clampBox({ cls: 1, xc: 0.98, yc: 0.5, w: 0.1, h: 0.1, pre: true, conf: 0.4 });
+  assert.equal(clipped.pre, true, 'other fields are kept');
+  assert.deepEqual(C.checkLabelText(C.serializeLabels([clipped]), 9).issues, [], 'a clipped box passes the irs rules after rounding');
+});
+
+test('compareClassLists requires classes.txt to equal round.json line for line', () => {
+  const txt = IRS_CLASSES.join('\n') + '\n';
+  assert.equal(C.compareClassLists(txt, IRS_CLASSES), null);
+  assert.equal(C.compareClassLists(IRS_CLASSES.join('\r\n'), IRS_CLASSES), null);
+  assert.equal(C.compareClassLists(null, IRS_CLASSES), 'classes.txt is missing');
+  assert.equal(C.compareClassLists(txt.replace('Van', 'van'), IRS_CLASSES), 'classes.txt line 3 is "van", round.json has "Van"');
+  assert.equal(C.compareClassLists(txt + 'Pedestrian\n', IRS_CLASSES), 'classes.txt line 10 is "Pedestrian", round.json has no class there');
+  assert.equal(C.compareClassLists('Car\nVan\n', ['Car', 'Pickup Truck', 'Van']), 'classes.txt line 2 is "Van", round.json has "Pickup Truck"');
+});

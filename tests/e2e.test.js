@@ -152,8 +152,17 @@ const statusFile = async b => Object.fromEntries(JSON.parse((await getFolder(b, 
 const waitLoaded = (b, i) => b.waitFor(`YOLOUI._snapshot().index === ${i} && YOLOUI._snapshot().owner === YOLOUI._snapshot().name`);
 const modal = b => b.evaluate(`({ show: document.getElementById('modalBg').classList.contains('show'), title: document.getElementById('modalTitle').textContent, body: document.getElementById('modalBody').textContent })`);
 
+// The sample without its deliberate duplicate pre-label (an error that would stop Finish round).
+function cleanSample() {
+  const files = ORIGINAL(), name = 'clark_ave_01__e5f60718__f014209';
+  files[`Labels/${name}.txt`] = Buffer.from(files[`Labels/${name}.txt`].toString().split('\n').slice(0, 3).join('\n') + '\n');
+  const rj = JSON.parse(files['round.json']); rj.images[name + '.jpg'].prelabel_conf.pop();
+  files['round.json'] = Buffer.from(JSON.stringify(rj, null, 2) + '\n');
+  return files;
+}
+
 test('review: Space marks reviewed and moves on, N confirms an empty frame, progress and Finish round', { skip }, () => withBrowser(async b => {
-  const original = ORIGINAL();
+  const original = cleanSample();
   await putFolder(b, 'round', original);
   await openRound(b);
   const names = Object.keys(original).filter(k => k.startsWith('Images/')).map(k => k.slice(7)).sort();
@@ -209,7 +218,8 @@ test('review: Space marks reviewed and moves on, N confirms an empty frame, prog
   // Review everything else, including deleting one.
   await b.evaluate(`YOLOUI._gotoIndex(0)`);
   await waitLoaded(b, 0);
-  for (let i = 1; i < 12; i++) { await b.key(' '); await waitLoaded(b, i); }
+  // Shift+Space: two sample images have deliberate problems that plain Space refuses (tested separately).
+  for (let i = 1; i < 12; i++) { await b.key(' ', { shift: true }); await waitLoaded(b, i); }
   await b.evaluate('YOLOUI.deleteCurrentImage()');
   await b.key(' ');
   await b.evaluate('new Promise(r => setTimeout(r, 200))');
@@ -317,6 +327,77 @@ test('reason banner shows why each frame was selected, and the round in the head
   r = await banner();
   assert.equal(r.show, false);
   assert.equal(r.round, '');
+}));
+
+test('checks: Space refuses an image with problems, fixes from the Checks panel, Shift+Space overrides, boxes stay inside the image', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  const loaded = i => b.waitFor(`YOLOUI._snapshot().index === ${i} && YOLOUI._snapshot().owner === YOLOUI._snapshot().name`);
+  const checks = () => b.evaluate(`[...document.querySelectorAll('#checksPanel .check-item .msg, #checksPanel .check-ok')].map(e => e.textContent)`);
+  assert.deepEqual(await checks(), ['No problems on this image ✓']);
+
+  // A box drawn past the image edge is clipped to it.
+  await drag(b, { x: 0.90, y: 0.80 }, { x: 1.10, y: 0.95 });
+  let s = await snap(b);
+  const nb = s.boxes.at(-1);
+  assert.ok(Math.abs(nb.xc + nb.w / 2 - 1) < 1e-9, 'right edge at the image edge');
+
+  // Duplicate pre-label (f014209, index 5): Space refuses and selects it.
+  await b.evaluate('YOLOUI._gotoIndex(5)'); await loaded(5);
+  assert.deepEqual(await checks(), ['Box 4 duplicates box 3 (same class, overlap above 95%)']);
+  await b.key(' ');
+  await b.evaluate('new Promise(r => setTimeout(r, 200))');
+  s = await snap(b);
+  assert.equal(s.index, 5, 'stayed on the image');
+  assert.equal(s.selected, 3);
+  assert.notEqual(s.status[s.name], 'reviewed');
+  assert.match(await b.evaluate(`document.getElementById('toast').textContent`), /^Not marked reviewed: Box 4 duplicates box 3 .*Shift\+Space/);
+  // Fix it from the panel, then Space works.
+  await b.evaluate(`document.querySelector('#checksPanel .check-item button').click()`);
+  assert.deepEqual(await checks(), ['No problems on this image ✓']);
+  assert.equal((await snap(b)).boxes.length, 3);
+  await b.key(' '); await loaded(6);
+
+  // Near-zero box (f015197, index 9): a warning, overridden with Shift+Space.
+  await b.evaluate('YOLOUI._gotoIndex(9)'); await loaded(9);
+  assert.deepEqual(await checks(), ['Box 6 is near zero size (1.0×0.7 px)']);
+  await b.key(' ', { shift: true }); await loaded(10);
+  await settle(b);
+  const st = JSON.parse((await getFolder(b, 'round'))['image_status.json'].toString());
+  assert.equal(st.find(r => r.name === 'hwy7_east__0badc0de__f015197.jpg').status, 'reviewed');
+}));
+
+test('checks: Finish round reports classes.txt differing from round.json, foreign images and unreadable label lines', { skip }, () => withBrowser(async b => {
+  const files = ORIGINAL();
+  files['classes.txt'] = Buffer.from(files['classes.txt'].toString().replace('Van', 'van'));
+  files['Images/stray__frame__f000001.jpg'] = files['Images/clark_ave_01__a1b2c3d4__f006138.jpg'];
+  files[`Labels/${IMG0}.txt`] = Buffer.concat([files[`Labels/${IMG0}.txt`], Buffer.from('3 0.5 oops 0.1 0.1\n')]);
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  assert.match(b.dialogs.join('\n'), /unreadable line/);
+  const checks = await b.evaluate(`[...document.querySelectorAll('#checksPanel .check-item .msg')].map(e => e.textContent)`);
+  assert.deepEqual(checks, ['The label file has 1 unreadable line, which irs ingest rejects']);
+  // Just showing the image and moving on does not rewrite the file.
+  await b.key('d');
+  await b.waitFor('YOLOUI._snapshot().index === 1 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await b.key('a');
+  await b.waitFor('YOLOUI._snapshot().index === 0 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await settle(b);
+  assert.match((await getFolder(b, 'round'))[`Labels/${IMG0}.txt`].toString(), /oops/);
+  await b.evaluate('YOLOUI.finishRound()');
+  const body = await b.evaluate(`document.getElementById('modalBody').textContent`);
+  assert.match(body, /problems irs ingest would reject/);
+  assert.match(body, /classes\.txt line 3 is "van", round\.json has "Van"/);
+  assert.match(body, /stray__frame__f000001\.jpg: not listed in round\.json/);
+  assert.match(body, /clark_ave_01__a1b2c3d4__f006138\.jpg: The label file has 1 unreadable line/);
+  assert.equal(await b.evaluate(`document.getElementById('modalTitle').textContent`), 'Round not finished yet');
+  await b.key('Escape');
+  // Rewrite drops the unreadable line.
+  await b.evaluate(`document.querySelector('#checksPanel .check-item button').click()`);
+  await settle(b);
+  const text = (await getFolder(b, 'round'))[`Labels/${IMG0}.txt`].toString();
+  assert.equal(lineCount(text), 3);
+  assert.doesNotMatch(text, /oops/);
 }));
 
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {

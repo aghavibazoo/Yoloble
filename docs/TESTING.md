@@ -83,3 +83,12 @@ Tick each line. Each line was added with the change it covers.
 
 - [ ] On the sample round a banner above the image says why it was picked (**RARE CLASS** rare class: 3ax Bus; **LOW CONFIDENCE** …; **TRACK DISAGREEMENT** …; **RANDOM SAMPLE** random sample). Hovering it shows the selection scores. The header shows **Round 3 · model m0005**.
 - [ ] An image missing from `round.json` shows **NOT IN ROUND**. A folder without `round.json` shows no banner and no round in the header.
+
+### Validation
+
+- [ ] `clark_ave_01__e5f60718__f014209.jpg`: **Checks** says *Box 4 duplicates box 3*, the box has a red ring. **Space** does not mark it reviewed: a message says why and selects the box. **Delete box** in Checks fixes it; then **Space** works.
+- [ ] `hwy7_east__0badc0de__f015197.jpg`: an orange ring shows a box too small to see; Checks says *near zero size (1.0×0.7 px)*. **Space** refuses, **Shift+Space** marks it reviewed anyway.
+- [ ] Draw a box starting outside the image: it is clipped to the image edge. Drag a box past the edge: it stops at the edge.
+- [ ] Edit a label file in Notepad so a box sticks out of the image (e.g. x centre 0.99, width 0.1) and reopen: Checks offers **Clip to image**. A line like `3 0.5 oops 0.1 0.1` gives a warning on opening and *unreadable line* in Checks; moving to another image leaves the file alone; **Rewrite file** removes the line.
+- [ ] Change `Van` to `van` in `classes.txt` and reopen: **Finish round** lists *classes.txt line 3 is "van", round.json has "Van"*. An extra image copied into `Images/` is listed as *not listed in round.json*. Problems are listed per image; clicking a name opens it.
+- [ ] Optional cross-check against irs itself: after a session, run irs's `check_label_bytes` (irs/dataset/labels.py) on every `Labels/*.txt` of non-deleted images: no issues.
