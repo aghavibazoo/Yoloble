@@ -68,17 +68,26 @@ async function connectPage(wsUrl) {
     focus: () => send('Page.bringToFront') };
 }
 
-async function launch({ userDataDir, port = 9300 + Math.floor(Math.random() * 500) } = {}) {
+async function launch({ userDataDir } = {}) {
   const exe = findChrome();
   if (!exe) throw new Error('No Chromium-based browser found (set CHROME_PATH)');
   const dir = userDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'yoloble-e2e-'));
+  // Chrome picks a free port and writes it to DevToolsActivePort in the profile, so
+  // test processes running side by side never drive each other's browser. A file
+  // left by an earlier run on the same profile is removed first.
+  const portFile = path.join(dir, 'DevToolsActivePort');
+  try { fs.unlinkSync(portFile); } catch (e) { if (e.code !== 'ENOENT') throw e; }
   const proc = spawn(exe, [
-    '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${dir}`,
+    '--headless=new', '--remote-debugging-port=0', `--user-data-dir=${dir}`,
     '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--window-size=1600,1000', 'about:blank',
   ], { stdio: 'ignore' });
-  let targets;
-  for (let i = 0; i < 100; i++) {
-    try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); if (targets.length) break; } catch {}
+  let targets, port;
+  for (let i = 0; i < 150; i++) {
+    try {
+      port = port || Number(fs.readFileSync(portFile, 'utf8').split(/\r?\n/)[0]);
+      targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
+      if (targets.length) break;
+    } catch { /* not up yet */ }
     await sleep(100);
   }
   if (!targets) { proc.kill(); throw new Error('browser did not start'); }
