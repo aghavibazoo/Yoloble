@@ -183,3 +183,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] An unreadable `classes.txt` (e.g. locked) gives a warning on opening; a round then uses the class names of `round.json`.
 - [ ] `THIRD-PARTY-NOTICES.md` holds the full MIT notices of JSZip and pako; the comment above the JSZip block in `index.html` states how to check the copy (sha256 with LF line endings).
 - [ ] ASCII numbers: a label line with a full-width digit (`１`), a superscript (`²`), `inf`, `nan` or `0.5_0` is reported as unreadable on opening and in Checks, as irs ingest now reports it.
+- [ ] Review only with its labels (N1): lock one label file (open it in a program that locks it), edit that image and press **Space**: `image_status.json` does not say `reviewed` for it while the banner reports the locked file; release the lock (or **Retry now**): the label file is written, then `reviewed` appears.

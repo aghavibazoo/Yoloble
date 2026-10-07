@@ -1091,7 +1091,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if(!folder.labelsDir) folder.labelsDir=await folder.root.getDirectoryHandle('Labels',{create:true});
       await writeTextFile(folder.labelsDir, folder.labelFiles.get(imageName)||YoloCore.labelFileNameFor(imageName), text);
     }
-    const statusForFile=n=> folder.extraStatus.get(n) ?? statusMap.get(norm(n)) ?? 'unlabeled';
+    // A new status reaches image_status.json only together with the labels it
+    // was given for: while an image's label file is waiting, being written or
+    // failing, the file keeps the image's status as it is on disk. (Otherwise
+    // a failed label write could leave "reviewed" next to the old pre-labels.)
+    const labelUnsaved=n=>save.pendingLabels.has(n) || save.inFlight.has(n) || save.fileErrors.has(n);
+    const statusForFile=n=> folder.extraStatus.get(n)
+      ?? (labelUnsaved(n) ? save.diskStatus.get(n) : undefined)
+      ?? statusMap.get(norm(n)) ?? 'unlabeled';
     function statusFileText(){ return YoloCore.serializeStatusJson([...folder.imageNames, ...folder.extraStatus.keys()], statusForFile); }
     async function statusFileHandle(){ try{ return await folder.root.getFileHandle('image_status.json'); }catch(e){ if(e?.name==='NotFoundError') return null; throw e; } }
     async function writeStatusFile(){
@@ -1198,6 +1205,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         save.inFlight.delete(name);
         if(folder!==target) return;
         save.diskText.set(name,text); save.diskRaw.set(name,text); save.badEncoding.delete(name); save.forceRewrite.delete(name);
+        // Its labels are on disk now: a status held back for it can follow.
+        if(!labelUnsaved(name) && (save.diskStatus.get(name) ?? 'unlabeled')!==(statusMap.get(norm(name)) ?? 'unlabeled')) save.pendingStatus=true;
       }
       if(folder!==target) return;
       if(save.pendingLabels.size && !failure && !save.fileErrors.size) save.again=true; // changed while writing: write again

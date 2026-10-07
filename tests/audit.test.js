@@ -524,4 +524,29 @@ test('the vendored JSZip is the published file (sha256 with LF line endings) and
   assert.match(notices, /pako[\s\S]*Copyright \(C\) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn[\s\S]*Permission is hereby granted/);
 });
 
+test('N1: a review reaches image_status.json only after its label file is on disk', { skip }, () => withBrowser(async b => {
+  const orig = ORIGINAL();
+  await putFolder(b, 'round', orig);
+  await openRound(b);
+  await b.evaluate(`(() => { const P = FileSystemDirectoryHandle.prototype, g = P.getFileHandle; window.__lock = true;
+    P.getFileHandle = function (n, o) { if (window.__lock && o?.create && n === '${IMG0}.txt') return Promise.reject(new DOMException('file is locked by another program', 'NoModificationAllowedError')); return g.call(this, n, o); }; })()`);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await b.key(' ');                                   // reviewed in Yoloble, moves on
+  await loaded(b, 1);
+  await b.key(' ', { shift: true }); await loaded(b, 2);   // another review, whose label is fine
+  await sleep(1500);
+  let disk = await getFolder(b, 'round');
+  let st = Object.fromEntries(JSON.parse(disk['image_status.json']).map(r => [r.name, r.status]));
+  assert.notEqual(st[`${IMG0}.jpg`], 'reviewed', 'not reviewed on disk while its labels are not');
+  assert.ok(disk[`Labels/${IMG0}.txt`].equals(orig[`Labels/${IMG0}.txt`]));
+  assert.equal(st['clark_ave_01__a1b2c3d4__f010808.jpg'], 'reviewed', 'the other review is written');
+  // The lock goes away: label first, then the review.
+  await b.evaluate('window.__lock = false; YOLOUI.retrySave()');
+  await settle(b);
+  disk = await getFolder(b, 'round');
+  st = Object.fromEntries(JSON.parse(disk['image_status.json']).map(r => [r.name, r.status]));
+  assert.equal(lineCount(disk[`Labels/${IMG0}.txt`]), 4);
+  assert.equal(st[`${IMG0}.jpg`], 'reviewed');
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
