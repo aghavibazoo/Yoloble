@@ -1149,7 +1149,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // No file and no boxes mean the same, except on a reviewed image, where an
       // empty file records a confirmed empty frame.
       const same = !save.forceRewrite.has(name) && (disk===text || diskBoxes===text && disk!==null || (disk===null && text==='' && statusOfName(name)!=='reviewed'));
-      if(same) save.pendingLabels.delete(name); else save.pendingLabels.set(name,text);
+      // Nothing to write any more (e.g. the edit was undone): forget an earlier failure too.
+      if(same){ save.pendingLabels.delete(name); save.fileErrors.delete(name); } else save.pendingLabels.set(name,text);
       scheduleSave();
     }
     function noteStatusChanged(){ if(!folder) return; save.pendingStatus=true; scheduleSave(); }

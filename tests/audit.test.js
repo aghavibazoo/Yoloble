@@ -549,4 +549,19 @@ test('N1: a review reaches image_status.json only after its label file is on dis
   assert.equal(st[`${IMG0}.jpg`], 'reviewed');
 }));
 
+test('N3: undoing an edit that could not be saved clears the save error', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await b.evaluate(`(() => { const P = FileSystemDirectoryHandle.prototype, g = P.getFileHandle;
+    P.getFileHandle = function (n, o) { if (o?.create && n === '${IMG0}.txt') return Promise.reject(new DOMException('locked', 'NoModificationAllowedError')); return g.call(this, n, o); }; })()`);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await b.waitFor('YOLOUI._snapshot().saveError !== null');
+  await b.key('z', { ctrl: true });                    // back to what the file holds: nothing to write
+  await b.waitFor('YOLOUI._snapshot().saveError === null', 8000);
+  const s = await snap(b);
+  assert.equal(s.unsaved, 0);
+  assert.match(s.saveState, /All changes saved/);
+  assert.equal(await b.evaluate(`document.getElementById('saveBanner').classList.contains('show')`), false);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
