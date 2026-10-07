@@ -151,3 +151,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Drop (B2): drag `a.jpg`, `b.jpg`, `c.jpg`, their `.txt` labels and a `deleted_list.txt` naming `a.jpg` into the window at once: `b.jpg` and `c.jpg` show their own boxes.
 - [ ] Drop (M6): drag two images in, then their two label files: the boxes appear at once; **D** then **A** keeps them.
 - [ ] Old status names (M1): a folder with `Images/Frame_A.jpg` and an `image_status.json` saying `frame_a.jpg`: review it; the file then lists `Frame_A.jpg` once (no lower-cased duplicate), and reopening shows it reviewed.
+- [ ] Recovery vs. another reviewer (M3): leave an unsaved edit on an image (read-only label file), close Yoloble, mark that image `reviewed` in `image_status.json` by hand, reopen: the edit is not restored, and the banner names the image as changed since.

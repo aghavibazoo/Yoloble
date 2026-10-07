@@ -466,20 +466,29 @@
     // moved on since, it is a conflict and the folder wins.
     //   session: {labels: {name: {text, base}}, statuses: {name: st}, statusBase: {name: st}}
     //   disk:    {labelText(name) -> canonical text or null, status(name) -> status or null}
+    // An image whose status in the folder changed since (reviewed or deleted
+    // elsewhere) gets none of the kept changes: restoring old boxes onto a
+    // decision made elsewhere would undo it. A kept status that was only the
+    // automatic one (unlabeled/labeled) is no decision, so it is not a conflict.
     const AUTO_STATUSES=new Set(['unlabeled','labeled',null,undefined]);
     function planRecovery(session, disk){
       const labels=[], statuses=[], conflicts=[];
+      const statusMoved=name=>{
+        if(!session?.statusBase || !(name in session.statusBase)) return false;
+        const cur=disk.status(name) ?? null, base=session.statusBase[name] ?? null;
+        return !(cur===base || (AUTO_STATUSES.has(cur) && AUTO_STATUSES.has(base)));
+      };
+      for(const [name,st] of Object.entries(session?.statuses||{})){
+        const cur=disk.status(name) ?? null;
+        if(cur===st || (AUTO_STATUSES.has(st) && AUTO_STATUSES.has(cur))) continue;
+        if(!statusMoved(name)) statuses.push({name, status:st});
+        else if(!AUTO_STATUSES.has(st)) conflicts.push(name);
+      }
       for(const [name,rec] of Object.entries(session?.labels||{})){
         // A missing file and an empty one say the same thing (no boxes).
         const cur=disk.labelText(name) ?? '', base=rec.base ?? '';
         if(cur===(rec.text ?? '')) continue;
-        if(cur===base) labels.push({name, text:rec.text}); else conflicts.push(name);
-      }
-      for(const [name,st] of Object.entries(session?.statuses||{})){
-        const cur=disk.status(name) ?? null, base=session.statusBase?.[name] ?? null;
-        if(cur===st || (AUTO_STATUSES.has(st) && AUTO_STATUSES.has(cur))) continue;
-        const sameAsBase = cur===base || (AUTO_STATUSES.has(cur) && AUTO_STATUSES.has(base));
-        if(sameAsBase) statuses.push({name, status:st}); else conflicts.push(name);
+        if(cur===base && !statusMoved(name)) labels.push({name, text:rec.text}); else conflicts.push(name);
       }
       return {labels, statuses, conflicts:[...new Set(conflicts)]};
     }
@@ -859,7 +868,10 @@
         }
       }
       plan.conflicts.forEach(n=>delete session.savedLabels[n]);
-      if(plan.conflicts.length) showNotice(`${plan.conflicts.length} image(s) in "${name}" were changed outside Yoloble after it last saved them; the folder's version was kept.`);
+      if(plan.conflicts.length){
+        const c=plan.conflicts.slice().sort(), shown=c.slice(0,5).join(', ')+(c.length>5?` and ${c.length-5} more`:'');
+        showNotice(`Not restored, because the folder changed since Yoloble kept them (edited by another program or another Yoloble window): unsaved changes for ${c.length} image${c.length>1?'s':''} in "${name}" (${shown}). The folder's version is shown.`);
+      }
       return rec.current;
     }
 

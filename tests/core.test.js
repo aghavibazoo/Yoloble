@@ -95,7 +95,7 @@ test('planRecovery restores only changes the folder never received', () => {
   // e: the folder moved between the two not-reviewed statuses, so the review is restored.
   // f: the folder marked the image deleted meanwhile: conflict, the folder wins.
   assert.deepEqual(plan.statuses, [{ name: 'b', status: 'reviewed' }, { name: 'd', status: 'deleted' }, { name: 'e', status: 'reviewed' }]);
-  assert.deepEqual(plan.conflicts, ['moved', 'f']);
+  assert.deepEqual(plan.conflicts, ['f', 'moved']);
 });
 
 test('planRecovery treats a missing label file like an empty one', () => {
@@ -321,4 +321,20 @@ test('uncertainOrder lists unchecked model boxes, least confident first', () => 
   ];
   assert.deepEqual(C.uncertainOrder(boxes), [2, 4, 0, 3]);
   assert.deepEqual(C.uncertainOrder([]), []);
+});
+
+test('M3: planRecovery does not restore edits onto an image decided elsewhere, and automatic statuses are no conflict', () => {
+  const session = {
+    labels: { a: { text: 'EDIT', base: 'PRE' }, b: { text: 'EDIT', base: 'PRE' } },
+    statuses: { a: 'labeled', b: 'labeled', c: 'unlabeled', d: 'reviewed' },
+    statusBase: { a: 'unlabeled', b: 'unlabeled', c: 'unlabeled', d: 'unlabeled' },
+  };
+  const diskStatus = { a: 'reviewed', b: 'unlabeled', c: 'deleted', d: 'unlabeled' };
+  const plan = C.planRecovery(session, { labelText: () => 'PRE', status: n => diskStatus[n] });
+  // a: reviewed in the folder since; its kept edit would undo that review.
+  // b: nothing moved: edit restored.  c: deleted elsewhere, kept status was automatic: silently skipped.
+  // d: a real decision with nothing moved: restored.
+  assert.deepEqual(plan.labels, [{ name: 'b', text: 'EDIT' }]);
+  assert.deepEqual(plan.statuses, [{ name: 'd', status: 'reviewed' }]);
+  assert.deepEqual(plan.conflicts, ['a']);
 });
