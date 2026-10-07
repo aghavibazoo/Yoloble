@@ -38,6 +38,7 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Open the folder again and click **Don't allow** / **Cancel** on the edit prompt (or open it from a read-only location). An amber banner says the folder is read-only and nothing is saved; **Allow saving to folder** asks again and, once allowed, saves.
 - [ ] Set `Labels\<current image>.txt` to read-only (Properties > Read-only), then edit that image. A red banner shows the error and the header shows **Save failed (1 unsaved)**; it retries every 5 s. Clear the read-only flag: the banner goes away by itself (or press **Retry now**) and the file holds the edit.
 - [ ] With an unsaved change (during the read-only test above), closing the tab makes the browser ask before leaving.
+- [ ] Leftovers of an interrupted save: create empty files `image_status.json.crswap` in the round folder and `x.txt.crswap` in `Labels\`, then open the folder with write access: both are gone and nothing else changed.
 - [ ] After a session, `dir /S /O:D /T:W` on the round folder: only files in `Labels\` and `image_status.json` have new times; nothing new appears in the folder (no temporary files left behind), `Images\`, `round.json` and `classes.txt` are untouched.
 
 ### Autosave and recovery
