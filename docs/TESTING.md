@@ -150,3 +150,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Save race (B1): on a slow disk (a network share or a slow USB stick), draw a box and press **Ctrl+Z** right away: after **All changes saved**, the label file matches the screen (the box is gone).
 - [ ] Drop (B2): drag `a.jpg`, `b.jpg`, `c.jpg`, their `.txt` labels and a `deleted_list.txt` naming `a.jpg` into the window at once: `b.jpg` and `c.jpg` show their own boxes.
 - [ ] Drop (M6): drag two images in, then their two label files: the boxes appear at once; **D** then **A** keeps them.
+- [ ] Old status names (M1): a folder with `Images/Frame_A.jpg` and an `image_status.json` saying `frame_a.jpg`: review it; the file then lists `Frame_A.jpg` once (no lower-cased duplicate), and reopening shows it reviewed.

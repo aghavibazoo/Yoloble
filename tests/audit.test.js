@@ -76,4 +76,23 @@ test('M6: labels dropped after the images are shown at once and survive moving o
   assert.deepEqual(await clsOf(b, 1), ['b.jpg', '1']);
 }));
 
+test('M1: lower-cased names from an older status file never produce duplicates, and the exact name wins', { skip }, () => withBrowser(async b => {
+  const orig = ORIGINAL(), jpg = orig[`Images/${IMG0}.jpg`];
+  await putFolder(b, 'old', {
+    'Images/Frame_A.jpg': jpg, 'Images/Frame_B.jpg': jpg, 'Labels/Frame_A.txt': Buffer.from('0 0.5 0.5 0.2 0.2\n'), 'classes.txt': orig['classes.txt'],
+    'image_status.json': Buffer.from(JSON.stringify([{ name: 'frame_a.jpg', status: 'labeled' }, { name: 'frame_b.jpg', status: 'deleted' }, { name: 'gone.jpg', status: 'reviewed' }])) });
+  await openRound(b, 'old');
+  assert.equal((await snap(b)).count, 1, 'Frame_B is deleted through its lower-cased entry');
+  await b.key(' ');
+  await settle(b);
+  let st = JSON.parse((await getFolder(b, 'old'))['image_status.json']);
+  assert.deepEqual(st, [{ name: 'Frame_A.jpg', status: 'reviewed' }, { name: 'Frame_B.jpg', status: 'deleted' }, { name: 'gone.jpg', status: 'reviewed' }]);
+  // A file with both spellings: the exact one wins on reopen.
+  await putFolder(b, 'both', {
+    'Images/Frame_A.jpg': jpg, 'classes.txt': orig['classes.txt'],
+    'image_status.json': Buffer.from(JSON.stringify([{ name: 'Frame_A.jpg', status: 'reviewed' }, { name: 'frame_a.jpg', status: 'labeled' }])) });
+  await openRound(b, 'both');
+  assert.equal((await snap(b)).status['frame_a.jpg'], 'reviewed');
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

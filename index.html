@@ -2217,7 +2217,7 @@ Generated: ${new Date().toISOString()}`;
         if(statusJsonHandle){
           const r=YoloCore.parseStatusJson(await (await statusJsonHandle.getFile()).text());
           if(r.error) loadWarnings.push(`${r.error}. It will be rewritten from the statuses shown here when you change one.`);
-          statusEntries=r.entries; statusEntries.forEach((st,n)=>{ statusMap.set(norm(n), st); save.diskStatus.set(n, st); });
+          statusEntries=r.entries; // applied per image below, once the image names are known
         } else {
           if(deletedTxtHandle){ const t=await (await deletedTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(norm(n),'deleted')); }
           if(labeledTxtHandle){ const t=await (await labeledTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(norm(n),'labeled')); }
@@ -2225,14 +2225,20 @@ Generated: ${new Date().toISOString()}`;
         persistStatus();
       }catch{}
 
-      const deleted=getDeletedSet();
-      const entries=[], allImageNames=[];
+      const scanned=[], allImageNames=[];
       for await (const [name,handle] of imagesHandle.entries()){
-        if(handle.kind==='file' && /\.(png|jpe?g|bmp|webp)$/i.test(name)){
-          allImageNames.push(name);
-          if(!deleted.has(norm(name))) entries.push({name,handle});
-        }
+        if(handle.kind==='file' && /\.(png|jpe?g|bmp|webp)$/i.test(name)){ allImageNames.push(name); scanned.push({name,handle}); }
       }
+      // image_status.json: an entry with the exact name wins over one that only
+      // matches ignoring case (older versions wrote lower-cased names).
+      const byLower=new Map();
+      statusEntries.forEach((st,n)=>{ if(!byLower.has(norm(n))) byLower.set(norm(n),[]); byLower.get(norm(n)).push([n,st]); });
+      for(const n of allImageNames){
+        const st = statusEntries.has(n) ? statusEntries.get(n) : byLower.get(norm(n))?.[0]?.[1];
+        if(st!==undefined){ statusMap.set(norm(n), st); save.diskStatus.set(n, st); }
+      }
+      const deleted=getDeletedSet();
+      const entries=scanned.filter(e=>!deleted.has(norm(e.name)));
       if(!entries.length){ hideLoading(); alert('No images found in "Images"'); return; }
       entries.sort((a,b)=>a.name.localeCompare(b.name));
 
@@ -2258,8 +2264,10 @@ Generated: ${new Date().toISOString()}`;
         const removed=await removeStaleSwapFiles(rootHandle, labelsHandle).catch(()=>[]);
         if(removed.length) console.info('Removed temporary files left by an interrupted save:', removed);
       }
-      const nameSet=new Set(allImageNames);
-      const extraStatus=new Map([...statusEntries].filter(([n])=>!nameSet.has(n)));
+      // Entries for files that are not in Images/ are kept as they are; entries
+      // that are only a case variant of an image's name are dropped (no duplicates).
+      const lowerNames=new Set(allImageNames.map(norm));
+      const extraStatus=new Map([...statusEntries].filter(([n])=>!lowerNames.has(norm(n))));
       folder={root:rootHandle, name:rootHandle.name, writable, labelsDir:labelsHandle, imageNames:allImageNames, labelFiles:new Map(), extraStatus, classesText};
 
       if(labelsHandle){
