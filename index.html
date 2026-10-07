@@ -625,8 +625,18 @@
     // prelabel_conf[i] is the confidence of line i of the pre-label file as
     // irs queue wrote it. It applies only while that file is unchanged: not
     // after review, and not when the file has a different number of lines.
-    function prelabelApplies({status, conf, lineCount, edited}){
+    // `hash` / `knownHash`: the file's hash now and as first seen by this
+    // browser (see hashText); once known, any change to the file ends the trust.
+    function prelabelApplies({status, conf, lineCount, edited, hash, knownHash}){
+      if(knownHash!==undefined && knownHash!==null && hash!==knownHash) return false;
       return !edited && status!=='reviewed' && status!=='deleted' && Array.isArray(conf) && lineCount>0 && conf.length===lineCount;
+    }
+    // FNV-1a over the UTF-16 code units, with the length: enough to notice
+    // that a small text file changed (not a security measure).
+    function hashText(s){
+      s=String(s ?? ''); let h=0x811c9dc5;
+      for(let i=0;i<s.length;i++){ h^=s.charCodeAt(i); h=Math.imul(h,16777619)>>>0; }
+      return `${s.length}:${h.toString(16)}`;
     }
     // Boxes from parseLabelText (with .line) marked as unconfirmed model boxes.
     function attachPrelabels(boxes, conf){
@@ -748,7 +758,7 @@
              parseStatusJson, serializeStatusJson, canonicalLabelText, planRecovery,
              PALETTE, classColor, textColorOn, classForKey, searchClasses,
              STATUSES, autoStatus, isDecided, reviewProgress,
-             ROUND_FORMATS, parseRoundJson, prelabelApplies, attachPrelabels, confirmBox, uncertainOrder,
+             ROUND_FORMATS, parseRoundJson, prelabelApplies, hashText, attachPrelabels, confirmBox, uncertainOrder,
              RULES, checkLabelText, checkLabelBytes, checkImageBoxes, checkFileIssues, clampBox, compareClassLists,
              splitPy:pySplit, pyFloat, decodeUtf8 };
   })();
@@ -897,7 +907,7 @@
       }
       session.savedLabels=labelsRec;
       return {key:session.key, kind:session.kind, name:session.name, handle:session.handle||null, updatedAt:Date.now(),
-              current:imageMetadata[currentImageIndex]?.name ?? null, labels:labelsRec, statuses, statusBase};
+              current:imageMetadata[currentImageIndex]?.name ?? null, labels:labelsRec, statuses, statusBase, prelabelHash:session.prelabelHash};
     }
 
     // Opens the session record for this folder or image set and offers back
@@ -909,7 +919,8 @@
         if(kind==='folder'){ for(const r of await idbAll('sessions')) if(r.kind==='folder' && r.handle && await r.handle.isSameEntry(handle).catch(()=>false)){ rec=r; break; } }
         else rec=await idbGet('sessions',key);
       }catch(e){ console.error('Could not read the browser backup',e); }
-      session={key:rec?.key || key || `folder:${name}:${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`, kind, name, handle:handle||null, names, edited:new Set(), savedLabels:rec?.labels||{}};
+      session={key:rec?.key || key || `folder:${name}:${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`, kind, name, handle:handle||null, names, edited:new Set(), savedLabels:rec?.labels||{},
+               prelabelHash:{...(rec?.prelabelHash||{})}};
       // Only one Yoloble window may work on a folder: a second one gets no
       // lock, opens it read-only, keeps no backup and offers no recovery (the
       // first window owns both).
@@ -968,8 +979,11 @@
           continue;
         }
         const conf=round.images.get(name)?.prelabelConf, fl=meta.fileLines;
-        if(fl && YoloCore.prelabelApplies({status:statusOfName(name), conf, lineCount:fl.count, edited:false}))
+        const raw=save.diskRaw.get(name), hash=raw===undefined?null:YoloCore.hashText(raw), known=session?.prelabelHash?.[name];
+        if(fl && YoloCore.prelabelApplies({status:statusOfName(name), conf, lineCount:fl.count, edited:false, hash, knownHash:known})){
           labels[i]=YoloCore.attachPrelabels(arr.map((b,k)=>({...b, line:fl.lines[k]})), conf);
+          if(session && known===undefined && hash) session.prelabelHash[name]=hash; // first time this browser sees the pre-label file
+        }
       }
     }
 

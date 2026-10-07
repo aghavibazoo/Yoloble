@@ -379,3 +379,13 @@ test('M4: strict reading of the formats irs rejects or accepts', () => {
   assert.deepEqual(v('1﻿0.5 0.5 0.1 0.1\n'), ['field_count'], 'a BOM does not separate fields');
   assert.deepEqual(C.parseLabelText('1 0x1 0.5 0.1 0.1\n').boxes, [], 'the editor does not load what irs rejects');
 });
+
+test('prelabelApplies: once the pre-label file\'s hash is known, any change ends the trust', () => {
+  const base = { status: 'labeled', conf: [0.9, 0.4], lineCount: 2, edited: false };
+  const h = C.hashText('0 0.5 0.5 0.1 0.1\n1 0.2 0.2 0.1 0.1\n');
+  assert.equal(C.prelabelApplies({ ...base, hash: h, knownHash: undefined }), true, 'first sight: line count decides');
+  assert.equal(C.prelabelApplies({ ...base, hash: h, knownHash: h }), true);
+  assert.equal(C.prelabelApplies({ ...base, hash: C.hashText('0 0.5 0.5 0.1 0.1\n1 0.2 0.3 0.1 0.1\n'), knownHash: h }), false, 'same line count, other content');
+  assert.notEqual(C.hashText('a'), C.hashText('b'));
+  assert.equal(C.hashText('abc'), C.hashText('abc'));
+});

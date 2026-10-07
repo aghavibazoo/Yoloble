@@ -194,4 +194,28 @@ test('M2: a status changed by someone else after Yoloble read the file is merged
   assert.match(await b.evaluate(`document.getElementById('noticeBannerMsg').textContent`), /changed outside this window/);
 }));
 
+test('pre-label trust: a pre-label file changed outside Yoloble (same line count) is no longer shown as model boxes', { skip }, async () => {
+  const profile = profileDir('prehash');
+  const target = 'clark_ave_01__e5f60718__f018633';   // never opened in the first session
+  let b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    await putFolder(b, 'round', ORIGINAL());
+    await openRound(b);
+    await b.evaluate('YOLOUI._saveSession()');
+    const text = (await getFolder(b, 'round'))[`Labels/${target}.txt`].toString();
+    await writeOpfs(b, 'round', `Labels/${target}.txt`, text.replace(/^(\d+ )0\.\d/, '$10.1'));   // move a box, keep the line count
+  } finally { await b.close(); }
+  b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    await openRound(b);
+    const i = await b.evaluate(`(async () => { for (let i = 0; i < 12; i++) { await YOLOUI._gotoIndex(i); if (YOLOUI._snapshot().owner === '${target}.jpg') return i; } })()`);
+    await loaded(b, i);
+    assert.ok((await snap(b)).boxes.every(x => !x.pre), 'changed file: boxes are not model boxes');
+    await b.evaluate('YOLOUI._gotoIndex(0)'); await loaded(b, 0);
+    assert.ok((await snap(b)).boxes.every(x => x.pre), 'unchanged file: still model boxes');
+  } finally { await b.close(); }
+});
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
