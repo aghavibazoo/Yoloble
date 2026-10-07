@@ -355,14 +355,6 @@
         <div style="font-size:11px;color:#aaa;margin:-4px 0 8px">Dashed boxes are model pre-labels nobody has checked yet, with the model's confidence. Editing a box or marking the image reviewed confirms it.</div>
         <div class="box-list" id="boxList"></div>
       </div>
-
-      <div class="section">
-        <div class="filter-section">
-          <h4 style="color:#4a90e2;margin-bottom:8px;font-size:12px">Debug</h4>
-          <div id="debugInfo" style="font-size:11px;color:#ccc">No image loaded</div>
-          <button class="btn" onclick="YOLOUI.showDetailedDebug()" style="margin-top:8px;font-size:10px;padding:4px 8px">Show Debug Console</button>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -1287,7 +1279,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       return RS;
     }
 
-    // FIXED: Proper coordinate transformation using canvas bounding rect
     const getCanvasPos=e=>{
       const rect=canvas.getBoundingClientRect();
       return {x:e.clientX-rect.left, y:e.clientY-rect.top};
@@ -1532,7 +1523,6 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const union=(A,B)=>{const R=new Set(A); for(const x of B) R.add(x); return R}
     const diff=(A,B)=>{const R=new Set(); for(const x of A) if(!B.has(x)) R.add(x); return R}
 
-    // FIXED: Proper filtering with status list and deleted list
     function applyFilters({navigate=true}={}){
       if(!labelDatabase.isBuilt){ if(navigate) alert('Database not ready.'); return }
       const s=$("filterStatus").value, c=$("filterClass").value, op=$("filterOperator").value;
@@ -1554,7 +1544,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if(inc.length){ const U=new Set(); inc.forEach(ci=>labelDatabase.classIndex[ci].forEach(i=>U.add(i))); res=intersect(res,U); }
       if(exc.length){ const X=new Set(); exc.forEach(ci=>labelDatabase.classIndex[ci].forEach(i=>X.add(i))); res=diff(res,X); }
       
-      // FIXED: Apply hide previously labeled filter
+      // Hide previously labeled (or reviewed) images
       if(hidePrevLabeled){ 
         const H=new Set(); 
         for(let i=0;i<imageMetadata.length;i++){ 
@@ -1564,7 +1554,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         res=diff(res,H);
       }
       
-      // FIXED: Apply deleted filter - remove all deleted images from results
+      // Deleted images are never shown
       const del=getDeletedSet(); 
       const rm=new Set(); 
       for(let i=0;i<imageMetadata.length;i++){
@@ -1660,7 +1650,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         if(i%50===0) await new Promise(r=>setTimeout(r,0));
       }
       
-      // FIXED: Filter out deleted images during initial load
+      // Images marked deleted are left out
       const del=getDeletedSet(); 
       if(del.size){
         imageMetadata=imageMetadata.filter(m=>!del.has(norm(m.name)));
@@ -1679,15 +1669,15 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       if(!imageMetadata.length){ alert('Upload images first.'); return }
       showLoading('Loading Labels...','Processing files...');
       labels=new Array(imageMetadata.length).fill(null).map(()=>[]);
-      imageMetadata.forEach(m=>{ m.labelFile=null; m.matchStrategy=null; m.labelLoadTime=null; });
+      imageMetadata.forEach(m=>{ m.labelFile=null; });
       let ok=0;
       for(let i=0;i<files.length;i++){
         if(!updateLoading((i/files.length)*80,`Processing ${files[i].name}...`)) return;
         const lf=files[i]; const ln=lf.name.replace(/\.txt$/i,''), text=await lf.text(), parsed=parseLabelFile(text);
-        let found=-1, strat='';
-        for(let k=0;k<imageMetadata.length;k++){ const im=imageMetadata[k].name.replace(/\.[^/.]+$/,''); if(im===ln){found=k;strat='exact';break} }
-        if(found===-1){ for(let k=0;k<imageMetadata.length;k++){ if(norm(imageMetadata[k].name.replace(/\.[^/.]+$/,''))===norm(ln)){found=k;strat='lower';break} } }
-        if(found!==-1){ labels[found]=parsed; ok++; save.diskText.set(imageMetadata[found].name, YoloCore.canonicalLabelText(text)); imageMetadata[found].labelFile=lf.name; imageMetadata[found].matchStrategy=strat; imageMetadata[found].labelLoadTime=Date.now(); setStatus(imageMetadata[found].name,YoloCore.autoStatus(statusMap.get(norm(imageMetadata[found].name)),parsed.length>0),{user:false}); }
+        let found=-1;
+        for(let k=0;k<imageMetadata.length;k++){ const im=imageMetadata[k].name.replace(/\.[^/.]+$/,''); if(im===ln){found=k;break} }
+        if(found===-1){ for(let k=0;k<imageMetadata.length;k++){ if(norm(imageMetadata[k].name.replace(/\.[^/.]+$/,''))===norm(ln)){found=k;break} } }
+        if(found!==-1){ labels[found]=parsed; ok++; save.diskText.set(imageMetadata[found].name, YoloCore.canonicalLabelText(text)); imageMetadata[found].labelFile=lf.name; setStatus(imageMetadata[found].name,YoloCore.autoStatus(statusMap.get(norm(imageMetadata[found].name)),parsed.length>0),{user:false}); }
         if(i%50===0) await new Promise(r=>setTimeout(r,0));
       }
       updateLoading(90,'Building database...'); buildLabelDatabase();
@@ -2324,10 +2314,9 @@ Generated: ${new Date().toISOString()}`;
 
     function updateUI(){
       $("totalImages").textContent=imageMetadata.length; $("loadedImages").textContent=imageCache.size();
-      const ic=$("imageCounter"), nm=$("imageName"), prev=$("prevBtn"), next=$("nextBtn"), page=$("pageInput"), dbg=$("debugInfo");
-      if(!imageMetadata.length){ ic.textContent='0 / 0'; nm.textContent='No image loaded'; dbg.textContent='No image loaded'; prev.disabled=true; next.disabled=true; page.max=0; updateZoomLevel(); updateReviewUI(); return }
-      const valid=getValidIndices(); const meta=imageMetadata[currentImageIndex]; const arr=labels[currentImageIndex]||[]; const has=arr.length>0; const forced=statusMap.get(norm(meta.name))==='labeled' && !arr.length; const st=getCurrentImageStatus(); const labelFile=meta.labelFile||'No label file', strategy=meta.matchStrategy||'N/A';
-      dbg.innerHTML=`Index: ${currentImageIndex}<br>Label file: ${escapeHtml(labelFile)}<br>Match: ${escapeHtml(strategy)}<br>Boxes: ${arr.length}${forced?' (No Label)':''}`;
+      const ic=$("imageCounter"), nm=$("imageName"), prev=$("prevBtn"), next=$("nextBtn"), page=$("pageInput");
+      if(!imageMetadata.length){ ic.textContent='0 / 0'; nm.textContent='No image loaded'; prev.disabled=true; next.disabled=true; page.max=0; updateZoomLevel(); updateReviewUI(); return }
+      const valid=getValidIndices(); const meta=imageMetadata[currentImageIndex]; const arr=labels[currentImageIndex]||[]; const has=arr.length>0; const forced=statusMap.get(norm(meta.name))==='labeled' && !arr.length; const st=getCurrentImageStatus();
       if(isFiltered){ const pos=currentFilteredIndices.indexOf(currentImageIndex); ic.textContent=(pos!==-1)?`${pos+1} / ${currentFilteredIndices.length} (filtered)`:`- / ${currentFilteredIndices.length} (filtered out)`; }
       else ic.textContent=`${currentImageIndex+1} / ${imageMetadata.length}`;
       let mark='',style=''; if(st==='filtered-out'){ mark='🔶'; style='color:#ffc107;font-style:italic;'; } else if(has||forced){ mark='🟢'; } else { mark='🔴'; }
@@ -2339,13 +2328,6 @@ Generated: ${new Date().toISOString()}`;
         const pos=valid.indexOf(currentImageIndex); prev.disabled=pos<=0; next.disabled=pos>=valid.length-1; prev.textContent='◀ Prev (A)'; next.textContent='Next (D) ▶';
       }
       page.max=valid.length; updateZoomLevel(); updateFilterStats(); updateReviewUI(); scheduleStrip();
-    }
-
-    function showDetailedDebug(){
-      if(!imageMetadata.length){ alert('No image loaded'); return }
-      const meta=imageMetadata[currentImageIndex]; const arr=labels[currentImageIndex]||[];
-      const match=boxes.length===arr.length && boxes.every((b,i)=>arr[i]&&b.cls===arr[i].cls && Math.abs(b.xc-arr[i].xc)<0.001 && Math.abs(b.yc-arr[i].yc)<0.001 );
-      alert(`Current Image: ${meta.name}\nBoxes: ${boxes.length}\nLabels: ${arr.length}\nMatch: ${match?'YES':'NO'}`);
     }
 
     function updateDatabaseStatus(){
@@ -2518,7 +2500,7 @@ Generated: ${new Date().toISOString()}`;
             labels[i]=parsed.boxes.map(({line,...b})=>b);
             imageMetadata[i].fileLines={lines:parsed.boxes.map(b=>b.line), count:parsed.lineCount};
             folder.labelFiles.set(name,fileName);
-            imageMetadata[i].labelFile=fileName; imageMetadata[i].matchStrategy='exact';
+            imageMetadata[i].labelFile=fileName;
             // What is on disk, in the form Yoloble would write it; a file with
             // unreadable lines keeps its raw text so the next edit rewrites it.
             save.diskText.set(name, YoloCore.canonicalLabelText(text));
@@ -2702,7 +2684,7 @@ Generated: ${new Date().toISOString()}`;
       undo, redo,
       exportStats: ()=>downloadBlob(new Blob([buildStatsText()],{type:'text/plain'}), 'dataset_statistics.txt'),
       downloadBundle,
-      showDetailedDebug, deleteCurrentImage,
+      deleteCurrentImage,
       chooseFolder, grantWriteAccess, retrySave, replaceBrokenStatusFile, resumeLastFolder, hideNotice,
       openClassPicker, toggleClassNames: ()=>toggleClassNames(), _renderClassList: renderClassList,
       markReviewed, nextUnreviewed, finishRound, showShortcuts, jumpToUncertain: ()=>jumpToUncertain(), toggleStrip: ()=>toggleStrip(),

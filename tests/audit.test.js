@@ -307,7 +307,7 @@ test('file and class names are shown as text, never interpreted as HTML', { skip
   await b.evaluate('new Promise(r => setTimeout(r, 300))');
   assert.equal(await b.evaluate('document.getElementById("imageName").textContent.includes("<img src=x")'), true);
   assert.equal(await b.evaluate('window.__pwned'), undefined);
-  assert.equal(await b.evaluate('document.querySelectorAll("#imageName img, #filterResults b, #debugInfo img").length'), 0);
+  assert.equal(await b.evaluate('document.querySelectorAll("#imageName img, #filterResults b").length'), 0);
 }));
 
 test('the ZIP export works with no network (JSZip is inside index.html)', { skip }, async () => {
