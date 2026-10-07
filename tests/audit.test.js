@@ -95,4 +95,25 @@ test('M1: lower-cased names from an older status file never produce duplicates, 
   assert.equal((await snap(b)).status['frame_a.jpg'], 'reviewed');
 }));
 
+test('M4: an unedited label file is checked on its exact bytes (what irs reads), not on Yoloble\'s rewrite of it', { skip }, () => withBrowser(async b => {
+  const files = ORIGINAL();
+  // 1.0000004 is written back as 1.000000 (accepted), but irs reads the file as it is (rejected).
+  files[`Labels/${IMG0}.txt`] = Buffer.concat([files[`Labels/${IMG0}.txt`], Buffer.from('1 1.0000004 0.5 0.1 0.1\n')]);
+  const hex = 'clark_ave_01__a1b2c3d4__f023836';
+  files[`Labels/${hex}.txt`] = Buffer.from('4 0x1 0.5 0.1 0.1\n');
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  const checks = () => b.evaluate(`[...document.querySelectorAll('#checksPanel .check-item .msg')].map(e => e.textContent)`);
+  assert.deepEqual(await checks(), ['Box 4 coordinates outside the image']);
+  await b.evaluate('YOLOUI.finishRound()');
+  const body = await b.evaluate(`document.getElementById('modalBody').textContent`);
+  assert.match(body, /f006138\.jpg: Box 4 coordinates outside the image/);
+  assert.match(body, new RegExp(`${hex}\.jpg: Line 1 of the label file has a value that is not a number`));
+  await b.key('Escape');
+  // Clip fixes it: the file is rewritten and passes.
+  await b.evaluate(`document.querySelector('#checksPanel .check-item button').click()`);
+  await settle(b);
+  assert.deepEqual(await checks(), []);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

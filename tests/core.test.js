@@ -19,10 +19,12 @@ test('parseLabelText keeps line indexes and reports bad lines', () => {
   assert.equal(r.lineCount, 4);
 });
 
-test('parseLabelText treats whitespace-only and BOM-prefixed files sensibly', () => {
+test('parseLabelText: whitespace-only files are empty; a BOM makes the first line unreadable, as in irs', () => {
   assert.deepEqual(C.parseLabelText('  \n ').boxes, []);
   assert.equal(C.parseLabelText('  \n ').bad.length, 0);
-  assert.equal(C.parseLabelText('﻿1 0.5 0.5 0.1 0.1').boxes[0].cls, 1);
+  const r = C.parseLabelText('\uFEFF1 0.5 0.5 0.1 0.1\n2 0.5 0.5 0.1 0.1\n');
+  assert.deepEqual(r.bad.map(x => [x.line, x.code]), [[0, 'bad_class_id']]);
+  assert.equal(r.boxes.length, 1);
 });
 
 test('serializeLabels writes six decimals, one box per line, trailing newline', () => {
@@ -337,4 +339,43 @@ test('M3: planRecovery does not restore edits onto an image decided elsewhere, a
   assert.deepEqual(plan.labels, [{ name: 'b', text: 'EDIT' }]);
   assert.deepEqual(plan.statuses, [{ name: 'd', status: 'reviewed' }]);
   assert.deepEqual(plan.conflicts, ['a']);
+});
+
+test('M4: label files are judged exactly as irs check_label_bytes judges them (recorded irs verdicts)', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const cases = JSON.parse(fs.readFileSync(path.join(__dirname, 'parity', 'irs_label_cases.json'), 'utf8'));
+  assert.ok(cases.length > 1000);
+  const codes = new Set();
+  let checked = 0;
+  for (const { b64, issues } of cases) {
+    const bytes = Buffer.from(b64, 'base64');
+    const js = C.checkLabelBytes(new Uint8Array(bytes), 9).issues.map(i => [i.code, i.line]);
+    assert.deepEqual(js, issues, `checker differs for ${JSON.stringify(bytes.toString('latin1'))}`);
+    // The app path for an unedited file: decode, parse, check the file as it is.
+    const d = C.decodeUtf8(new Uint8Array(bytes));
+    const app = C.checkFileIssues(d.text, C.parseLabelText(d.text).boxes, 9, {}, { notUtf8: !d.ok }).filter(i => i.severity === 'error');
+    assert.equal(app.length === 0, issues.length === 0, `app verdict differs for ${JSON.stringify(bytes.toString('latin1'))}`);
+    // Whatever the app loads and would write back passes irs.
+    if (d.ok) assert.deepEqual(C.checkLabelText(C.serializeLabels(C.parseLabelText(d.text).boxes.filter((b, i, a) =>
+      !C.checkImageBoxes([b], 9).some(x => x.severity === 'error'))), 9).issues.filter(x => x.code !== 'duplicate_box'), []);
+    issues.forEach(([c]) => codes.add(c));
+    checked++;
+  }
+  for (const c of ['not_utf8', 'blank_line', 'field_count', 'bad_class_id', 'class_out_of_range', 'bad_number', 'coord_out_of_range', 'degenerate_box', 'box_outside_image', 'duplicate_box'])
+    assert.ok(codes.has(c), `the cases cover ${c}`);
+  assert.equal(checked, cases.length);
+});
+
+test('M4: strict reading of the formats irs rejects or accepts', () => {
+  const v = t => C.checkLabelText(t, 9).issues.map(i => i.code);
+  assert.deepEqual(v('1 0x1 0.5 0.1 0.1\n'), ['bad_number'], 'hex is not a Python float');
+  assert.deepEqual(v('1 1e0 0.5 0.1 0.1\n'), ['box_outside_image'], '1e0 is a float (1.0)');
+  assert.deepEqual(v('1.5 0.5 0.5 0.1 0.1\n'), ['bad_class_id']);
+  assert.deepEqual(v('﻿1 0.5 0.5 0.1 0.1\n'), ['bad_class_id'], 'the BOM is part of the first field');
+  assert.deepEqual(v('1 0.5_0 0.5 0.1 0.1\n'), [], 'underscores between digits are allowed by float()');
+  assert.deepEqual(v('1 inf 0.5 0.1 0.1\n'), ['bad_number']);
+  assert.deepEqual(v('1 0.5 0.5 0.1 0.1\n'), [], 'no-break space separates fields in Python');
+  assert.deepEqual(v('1﻿0.5 0.5 0.1 0.1\n'), ['field_count'], 'a BOM does not separate fields');
+  assert.deepEqual(C.parseLabelText('1 0x1 0.5 0.1 0.1\n').boxes, [], 'the editor does not load what irs rejects');
 });

@@ -390,7 +390,7 @@ test('checks: Finish round reports classes.txt differing from round.json, foreig
   await openRound(b);
   assert.match(b.dialogs.join('\n'), /unreadable line/);
   const checks = await b.evaluate(`[...document.querySelectorAll('#checksPanel .check-item .msg')].map(e => e.textContent)`);
-  assert.deepEqual(checks, ['The label file has 1 unreadable line, which irs ingest rejects']);
+  assert.deepEqual(checks, ['Line 4 of the label file has a value that is not a number, which irs ingest rejects']);
   // Just showing the image and moving on does not rewrite the file.
   await b.key('d');
   await b.waitFor('YOLOUI._snapshot().index === 1 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
@@ -403,7 +403,7 @@ test('checks: Finish round reports classes.txt differing from round.json, foreig
   assert.match(body, /problems irs ingest would reject/);
   assert.match(body, /classes\.txt line 3 is "van", round\.json has "Van"/);
   assert.match(body, /stray__frame__f000001\.jpg: not listed in round\.json/);
-  assert.match(body, /clark_ave_01__a1b2c3d4__f006138\.jpg: The label file has 1 unreadable line/);
+  assert.match(body, /clark_ave_01__a1b2c3d4__f006138\.jpg: Line 4 of the label file has a value that is not a number/);
   assert.equal(await b.evaluate(`document.getElementById('modalTitle').textContent`), 'Round not finished yet');
   await b.key('Escape');
   // Rewrite drops the unreadable line.

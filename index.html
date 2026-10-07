@@ -383,31 +383,75 @@
   // Pure logic, no DOM access. The app below uses it, and tests/core.test.js
   // loads this exact block in Node, so keep it free of browser globals.
   const YoloCore = (() => {
-    // Python str.splitlines() for the line endings label files use.
+    // Label files are read exactly as irs reads them (irs/dataset/labels.py:
+    // bytes decoded as UTF-8, str.splitlines(), str.split(), int(), float()),
+    // so a file Yoloble accepts is a file irs accepts. JavaScript's own trim(),
+    // \s and Number() differ (the BOM, '0x1', ...), so they are not used here.
+    const PY_WS='\t\n\x0b\x0c\r\x1c-\x1f \x85\xa0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000';
+    const PY_SPLIT=new RegExp('['+PY_WS+']+'), PY_STRIP=new RegExp('^['+PY_WS+']+|['+PY_WS+']+$','g');
+    const pyStrip=s=>String(s).replace(PY_STRIP,'');
+    const pySplit=s=>pyStrip(s).split(PY_SPLIT).filter(x=>x!=='');
+    // str.splitlines()
     function splitLines(text){
       const s=String(text ?? '');
       if(!s) return [];
-      const lines=s.split(/\r\n|\r|\n/);
+      const lines=s.split(/\r\n|[\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029]/);
       if(lines[lines.length-1]==='') lines.pop();
       return lines;
     }
+    // float(): decimal literals with optional exponent and single underscores
+    // between digits, or inf/infinity/nan. Anything else (hex, '', '1..2') is
+    // not a number. Returns undefined when float() would raise.
+    const PY_FLOAT=/^[+-]?(?:(?:\d(?:_?\d)*)?\.\d(?:_?\d)*|\d(?:_?\d)*\.?)(?:[eE][+-]?\d(?:_?\d)*)?$/;
+    function pyFloat(t){
+      if(PY_FLOAT.test(t)) return Number(t.replace(/_/g,''));
+      const m=/^([+-]?)(inf|infinity|nan)$/i.exec(t);
+      if(m) return /nan/i.test(m[2]) ? NaN : m[1]==='-' ? -Infinity : Infinity;
+      return undefined;
+    }
+    // int() of a str.isdigit() class field: any Unicode decimal digits.
+    function pyInt(t){
+      if(/^\d+$/.test(t)) return Number(t);
+      if(!/^\p{Nd}+$/u.test(t)) return undefined;
+      let v=0;
+      for(const ch of t){
+        let cp=ch.codePointAt(0), start=cp;
+        while(/\p{Nd}/u.test(String.fromCodePoint(start-1))) start--;   // digits come in runs of ten
+        v=v*10+((cp-start)%10);
+      }
+      return v;
+    }
+    // One line's fields, or the reason irs would give for rejecting it.
+    function parseFields(line){
+      const f=pySplit(line);
+      if(!f.length) return {code:'blank_line', reason:'blank line'};
+      if(f.length!==5) return {code:'field_count', reason:`expected 5 fields, got ${f.length}`};
+      const cls=pyInt(f[0]);
+      if(cls===undefined) return {code:'bad_class_id', reason:`class id '${f[0]}' is not an integer`};
+      const c=f.slice(1).map(pyFloat), bad=c.findIndex(v=>v===undefined || !Number.isFinite(v));
+      if(bad>=0) return {code:'bad_number', reason: c[bad]===undefined ? `'${f[bad+1]}' is not a number` : `'${f[bad+1]}' is not finite`};
+      return {cls, xc:c[0], yc:c[1], w:c[2], h:c[3], fields:f};
+    }
 
-    // Lenient reader for the editor. Every box keeps `line`, its 0-based line
-    // index in the file, so per-line data (pre-label confidence) can be matched.
+    // Reader for the editor: a line irs could not read is reported, not
+    // guessed at. Every box keeps `line`, its 0-based line index in the file,
+    // so per-line data (pre-label confidence) can be matched.
     function parseLabelText(text){
       const boxes=[], bad=[];
-      const src=String(text ?? '').replace(/^﻿/,'');
-      if(!src.trim()) return {boxes, bad, lineCount:0};
+      const src=String(text ?? '');
+      if(!pyStrip(src)) return {boxes, bad, lineCount:0};
       const lines=splitLines(src);
       lines.forEach((line,i)=>{
-        const f=line.trim().split(/\s+/).filter(Boolean);
-        if(!f.length){ bad.push({line:i,text:line,reason:'blank line'}); return; }
-        if(f.length!==5){ bad.push({line:i,text:line,reason:`expected 5 fields, got ${f.length}`}); return; }
-        const n=f.map(Number);
-        if(!n.every(Number.isFinite)){ bad.push({line:i,text:line,reason:'not a number'}); return; }
-        boxes.push({cls:Math.floor(n[0]),xc:n[1],yc:n[2],w:n[3],h:n[4],line:i});
+        const r=parseFields(line);
+        if(r.code) bad.push({line:i, text:line, code:r.code, reason:r.reason});
+        else boxes.push({cls:r.cls, xc:r.xc, yc:r.yc, w:r.w, h:r.h, line:i});
       });
       return {boxes, bad, lineCount:lines.length};
+    }
+    // Bytes as irs decodes them: strict UTF-8, a byte-order mark kept as a character.
+    function decodeUtf8(bytes){
+      try{ return {text:new TextDecoder('utf-8',{fatal:true, ignoreBOM:true}).decode(bytes), ok:true}; }
+      catch{ return {text:new TextDecoder('utf-8',{ignoreBOM:true}).decode(bytes), ok:false}; }
     }
 
     const fmt=v=>(Math.abs(v)<5e-7?0:v).toFixed(6);
@@ -602,19 +646,15 @@
     const MIN_BOX_PX=4, MIN_BOX_NORM=0.002; // "near zero size" (warning only; irs accepts any w,h > 0)
     function checkLabelText(text, numClasses, rules=RULES){
       const src=String(text ?? '');
-      if(!src.trim()) return {boxes:[], issues:[]};
+      if(!pyStrip(src)) return {boxes:[], issues:[]};
       const boxes=[], boxLines=[], issues=[];
       splitLines(src).forEach((line,i)=>{
         const ln=i+1, add=(code,message)=>issues.push({code,line:ln,message});
-        if(!line.trim()){ add('blank_line','blank line'); return; }
-        const f=line.trim().split(/\s+/);
-        if(f.length!==5){ add('field_count',`expected 5 fields, got ${f.length}`); return; }
-        if(!/^\d+$/.test(f[0])){ add('bad_class_id',`class id '${f[0]}' is not an integer`); return; }
-        const cls=Number(f[0]);
+        const r=parseFields(line);
+        if(r.code){ add(r.code, r.reason); return; }
+        const {cls,fields:f}=r;
         if(cls>=numClasses){ add('class_out_of_range',`class id ${cls} not in 0..${numClasses-1}`); return; }
-        const c=f.slice(1).map(Number);
-        const badAt=c.findIndex(v=>!Number.isFinite(v));
-        if(badAt>=0){ add('bad_number',`'${f[badAt+1]}' is not a number`); return; }
+        const c=[r.xc,r.yc,r.w,r.h];
         if(c.some(v=>v<0 || v>1)){ add('coord_out_of_range',`coordinates ${f.slice(1).join(' ')} not all in [0, 1]`); return; }
         const b={cls, xc:c[0], yc:c[1], w:c[2], h:c[3]};
         if(b.w<=0 || b.h<=0){ add('degenerate_box',`zero-size box w=${f[3]} h=${f[4]}`); return; }
@@ -627,12 +667,47 @@
       });
       return {boxes, issues};
     }
+    // check_label_bytes(): bytes that are not UTF-8 are one issue for the file.
+    function checkLabelBytes(bytes, numClasses, rules=RULES){
+      const d=decodeUtf8(bytes);
+      if(!d.ok) return {boxes:[], issues:[{code:'not_utf8', line:null, message:'not UTF-8'}]};
+      return checkLabelText(d.text, numClasses, rules);
+    }
     const ISSUE_TEXT={
       class_out_of_range:'class is not in the class list', bad_class_id:'class is not a whole number',
       coord_out_of_range:'coordinates outside the image', box_outside_image:'extends outside the image',
       degenerate_box:'has zero size', duplicate_box:'duplicates another box (same class, overlap above 95%)',
-      tiny_box:'is near zero size', bad_number:'has a value that is not a number', field_count:'malformed line', blank_line:'blank line',
+      tiny_box:'is near zero size', bad_number:'has a value that is not a number', field_count:'does not have 5 fields', blank_line:'is blank',
     };
+    const FORMAT_CODES=new Set(['blank_line','field_count','bad_class_id','bad_number','not_utf8']);
+    const fixFor=code=>FORMAT_CODES.has(code)?'rewrite':code==='box_outside_image'||code==='coord_out_of_range'?'clip':code==='class_out_of_range'?'class':'delete';
+    function tinyWarnings(boxes, size, skip=new Set()){
+      const out=[];
+      boxes.forEach((b,i)=>{
+        if(skip.has(i)) return;
+        const tiny = size.width>0 && size.height>0 ? (b.w*size.width<MIN_BOX_PX || b.h*size.height<MIN_BOX_PX) : (b.w<MIN_BOX_NORM || b.h<MIN_BOX_NORM);
+        if(tiny){
+          const px = size.width>0 ? ` (${Math.max(0,b.w*size.width).toFixed(1)}×${Math.max(0,b.h*size.height).toFixed(1)} px)` : '';
+          out.push({code:'tiny_box', box:i, severity:'warning', message:`Box ${i+1} is near zero size${px}`, fix:'delete'});
+        }
+      });
+      return out;
+    }
+    const sortIssues=out=>out.sort((a,b)=>a.box-b.box || (a.severity===b.severity?0:a.severity==='error'?-1:1));
+    // Issues of a label file as it is on disk (an image nobody edited): the
+    // exact bytes irs ingest will read, not the boxes Yoloble would write.
+    // `boxes` are parseLabelText(text).boxes (with .line).
+    function checkFileIssues(text, boxes, numClasses, size={}, {notUtf8=false}={}, rules=RULES){
+      if(notUtf8) return [{code:'not_utf8', box:-1, severity:'error', message:'The label file is not valid UTF-8, which irs ingest rejects', fix:'rewrite'}];
+      const boxOf=ln=>boxes.findIndex(b=>b.line===ln-1), out=[];
+      checkLabelText(text, numClasses, rules).issues.forEach(({code,line,message})=>{
+        const box=boxOf(line), dup=/with line (\d+)/.exec(message), other=dup?boxOf(Number(dup[1])):-1;
+        const msg = box<0 ? `Line ${line} of the label file ${ISSUE_TEXT[code]||message}, which irs ingest rejects`
+                  : dup ? `Box ${box+1} duplicates box ${other+1} (same class, overlap above 95%)` : `Box ${box+1} ${ISSUE_TEXT[code]||message}`;
+        out.push({code, box, severity:'error', detail:message, other:dup?other:null, message:msg, fix:fixFor(code)});
+      });
+      return sortIssues(out.concat(tinyWarnings(boxes, size, new Set(out.filter(x=>x.code==='degenerate_box').map(x=>x.box)))));
+    }
     // Issues for the boxes of one image, as they would be written. Each issue:
     // {code, box (index), severity 'error' (irs ingest rejects it) or 'warning', message, fix}.
     function checkImageBoxes(boxes, numClasses, size={}, rules=RULES){
@@ -641,17 +716,9 @@
         const box=line-1, dup=/with line (\d+)/.exec(message);
         out.push({code, box, severity:'error', detail:message, other:dup?Number(dup[1])-1:null,
                   message: dup ? `Box ${box+1} duplicates box ${dup[1]} (same class, overlap above 95%)` : `Box ${box+1} ${ISSUE_TEXT[code]||message}`,
-                  fix:code==='box_outside_image'||code==='coord_out_of_range'?'clip':code==='class_out_of_range'?'class':'delete'});
+                  fix:fixFor(code)});
       });
-      boxes.forEach((b,i)=>{
-        if(out.some(x=>x.box===i && x.code==='degenerate_box')) return;
-        const tiny = size.width>0 && size.height>0 ? (b.w*size.width<MIN_BOX_PX || b.h*size.height<MIN_BOX_PX) : (b.w<MIN_BOX_NORM || b.h<MIN_BOX_NORM);
-        if(tiny){
-          const px = size.width>0 ? ` (${Math.max(0,b.w*size.width).toFixed(1)}×${Math.max(0,b.h*size.height).toFixed(1)} px)` : '';
-          out.push({code:'tiny_box', box:i, severity:'warning', message:`Box ${i+1} is near zero size${px}`, fix:'delete'});
-        }
-      });
-      return out.sort((a,b)=>a.box-b.box || (a.severity===b.severity?0:a.severity==='error'?-1:1));
+      return sortIssues(out.concat(tinyWarnings(boxes, size, new Set(out.filter(x=>x.code==='degenerate_box').map(x=>x.box)))));
     }
     // Keeps a box inside the image. 'shift' moves it in (size kept where it
     // fits), 'clip' cuts off what is outside. Returns null if nothing is left.
@@ -681,7 +748,8 @@
              PALETTE, classColor, textColorOn, classForKey, searchClasses,
              STATUSES, autoStatus, isDecided, reviewProgress,
              ROUND_FORMATS, parseRoundJson, prelabelApplies, attachPrelabels, confirmBox, uncertainOrder,
-             RULES, checkLabelText, checkImageBoxes, clampBox, compareClassLists };
+             RULES, checkLabelText, checkLabelBytes, checkImageBoxes, checkFileIssues, clampBox, compareClassLists,
+             splitPy:pySplit, pyFloat, decodeUtf8 };
   })();
   if(typeof module!=='undefined' && module.exports) module.exports=YoloCore;
   </script>
@@ -918,12 +986,13 @@
     let round=null;  // parsed round.json of the open folder (YoloCore.parseRoundJson), or null
     const SAVE_DEBOUNCE_MS=400, SAVE_RETRY_MS=5000;
     // diskText / diskStatus: what the folder holds, as last read or written.
-    const save={pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskStatus:new Map(), forceRewrite:new Set(), inFlight:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
+    // diskRaw: label file text exactly as read (folders only), badEncoding: files that are not UTF-8.
+    const save={pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskRaw:new Map(), badEncoding:new Set(), diskStatus:new Map(), forceRewrite:new Set(), inFlight:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
     let flushPromise=null;
 
     function resetSaveState(){
       clearTimeout(save.timer); clearTimeout(save.retry);
-      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.inFlight.clear(); save.error=null; save.lastSaved=null;
+      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.inFlight.clear(); save.diskRaw.clear(); save.badEncoding.clear(); save.error=null; save.lastSaved=null;
       hideSaveBanner(); updateSaveIndicator();
     }
     const unsavedCount=()=>save.pendingLabels.size+(save.pendingStatus?1:0);
@@ -1009,7 +1078,7 @@
           catch(e){ save.inFlight.delete(name); if(!save.pendingLabels.has(name)) save.pendingLabels.set(name,text); throw e; }
           save.inFlight.delete(name);
           if(folder!==target) return;
-          save.diskText.set(name,text); save.forceRewrite.delete(name);
+          save.diskText.set(name,text); save.diskRaw.set(name,text); save.badEncoding.delete(name); save.forceRewrite.delete(name);
         }
         if(save.pendingLabels.size) save.again=true; // changed while writing: write again
         if(save.pendingStatus){
@@ -1772,18 +1841,18 @@
 
     // ----- checks (validation) -----
     const numClassesForCheck=()=>round?.classes?.length || CLASS_NAMES.length;
-    // Label file on disk with lines Yoloble could not read (and has not rewritten yet).
-    function unreadableLines(name){
-      if(!save.diskText.has(name) || save.pendingLabels.has(name)) return 0;
-      return YoloCore.parseLabelText(save.diskText.get(name)).bad.length;
-    }
+    // An image nobody has edited is checked on the exact text of its file on
+    // disk (what irs ingest will read); an edited one on the text Yoloble will write.
     function imageIssues(i){
       const meta=imageMetadata[i]; if(!meta) return [];
-      const arr = meta.name===boxesOwner ? boxes : (labels[i]||[]);
-      const out=YoloCore.checkImageBoxes(arr, numClassesForCheck(), {width:meta.width, height:meta.height});
-      const bad=unreadableLines(meta.name);
-      if(bad) out.unshift({code:'unreadable_lines', box:-1, severity:'error', message:`The label file has ${bad} unreadable line${bad>1?'s':''}, which irs ingest rejects`, fix:'rewrite'});
-      return out;
+      const name=meta.name, arr = name===boxesOwner ? boxes : (labels[i]||[]);
+      const size={width:meta.width, height:meta.height}, n=numClassesForCheck();
+      if(save.diskRaw.has(name) && !save.pendingLabels.has(name) && !save.inFlight.has(name) && !save.forceRewrite.has(name)){
+        const raw=save.diskRaw.get(name), parsed=YoloCore.parseLabelText(raw).boxes;
+        if(YoloCore.serializeLabels(parsed)===YoloCore.serializeLabels(arr))
+          return YoloCore.checkFileIssues(raw, parsed, n, size, {notUtf8:save.badEncoding.has(name)});
+      }
+      return YoloCore.checkImageBoxes(arr, n, size);
     }
     const currentIssues=()=>{ const i=boxesOwner===null?-1:indexOfName(boxesOwner); return i<0?[]:imageIssues(i); };
     function renderChecks(){
@@ -2286,13 +2355,15 @@ Generated: ${new Date().toISOString()}`;
         const map=new Map();
         for await (const [lname,lhandle] of labelsHandle.entries()){
           if(lhandle.kind==='file' && /\.txt$/i.test(lname)){
-            const file=await lhandle.getFile(); map.set(lname.replace(/\.txt$/i,''), {text:await file.text(), fileName:lname});
+            const file=await lhandle.getFile(), d=YoloCore.decodeUtf8(new Uint8Array(await file.arrayBuffer()));
+            map.set(lname.replace(/\.txt$/i,''), {text:d.text, utf8:d.ok, fileName:lname});
           }
         }
         for(let i=0;i<imageMetadata.length;i++){
           const name=imageMetadata[i].name, base=name.replace(/\.[^/.]+$/,'');
           if(map.has(base)){
-            const {text,fileName}=map.get(base), parsed=YoloCore.parseLabelText(text);
+            const {text,utf8,fileName}=map.get(base), parsed=YoloCore.parseLabelText(text);
+            save.diskRaw.set(name, text); if(!utf8){ save.badEncoding.add(name); loadWarnings.push(`Labels/${fileName} is not valid UTF-8.`); }
             labels[i]=parsed.boxes.map(({line,...b})=>b);
             imageMetadata[i].fileLines={lines:parsed.boxes.map(b=>b.line), count:parsed.lineCount};
             folder.labelFiles.set(name,fileName);
