@@ -32,16 +32,21 @@ Folder and file names are case-sensitive as shown. Yoloble's folder import requi
 - One box per line: `<class_id> <x_center> <y_center> <width> <height>`, values normalised to 0–1, space-separated.
 - As written by `irs queue`, these are model pre-labels (confidence of at least 0.25). After review they are the human-corrected labels.
 - An empty file on an image with status `reviewed` means a confirmed empty frame. An empty or missing file on any other image means nothing. A `reviewed` image without a label file is an error at ingest (a missing file is not a decision).
-- `irs queue` writes LF line endings and a final newline; Yoloble writes no final newline. Both are accepted.
+- Label files use LF line endings and end with a final newline (`irs queue` and Yoloble both write it); a file without one is accepted.
+- A file name must match its image's name exactly, case included. Two files whose names differ only in case, or a name that differs from the expected one only in case, are errors at ingest.
+- `Labels/<name>.txt.crswap` is the browser's temporary file of a save that did not finish (Yoloble crashed or was closed while saving). Yoloble removes it when the folder is reopened. Ingest refuses a folder that holds one: "interrupted save in Yoloble — reopen the folder in Yoloble so it recovers, then re-run".
+- Operating-system files (`Thumbs.db`, `desktop.ini`, `.DS_Store`; config `dataset.ignore_files`) in `Images/` or `Labels/` are ignored.
 
 ## classes.txt
 
 - UTF-8, one name per line, no blank lines. Line 1 is class ID 0. `irs queue` ends the file with a newline; a file without one (as Yoloble writes) is the same list.
-- Written by `irs queue` from the current class list. Yoloble must not reorder it. Ingest rejects a round whose `classes.txt` differs from the class list in `round.json`.
+- Written by `irs queue` from the current class list. Yoloble never writes it. Ingest rejects a round whose `classes.txt` differs from the class list in `round.json`.
 
 ## image_status.json
 
-A JSON array, one entry per image, keyed by image file name. `irs queue` writes it sorted by name, indented by two spaces. Ingest matches names case-insensitively (Yoloble lower-cases them); an image without an entry is `unlabeled`.
+A JSON array, one entry per image, keyed by image file name. `irs queue` writes it sorted by name, indented by two spaces; Yoloble writes the names exactly as the image files are named (in the folder and in the ZIP export). Ingest matches names case-insensitively, for status lists written by older Yoloble versions that lower-cased them; two entries for one name with different statuses are an error. An image without an entry is `unlabeled`.
+
+Before replacing a damaged status file, Yoloble may keep its old content as `image_status.json.bak` in the round folder. Ingest ignores that file.
 
 ```json
 [
@@ -124,4 +129,17 @@ Additions made in phase 3 (2026-10-06). They are compatible: a reader that ignor
 | Frame number zero-padded to six digits | nothing |
 | `classes.txt` ends with a newline when written by `irs queue` | must not treat the final newline as a blank line or an extra class |
 | A `reviewed` image needs a label file (empty = confirmed empty) | save an empty file for a confirmed empty frame |
+
+Second set (phase 3 audit, 2026-10-07), also compatible:
+
+| Change | Yoloble |
+|---|---|
+| `image_status.json` holds exact-case names (folder and ZIP); ingest still matches case-insensitively | writes exact-case names |
+| Label files end with a final newline | writes it |
+| `classes.txt` is written by `irs queue` only | never writes it |
+| `Labels/<name>.txt.crswap` blocks ingest until Yoloble has recovered the folder | cleans it up on reopen |
+| `image_status.json.bak` in the round folder is ignored | may write it |
+| `Thumbs.db`, `desktop.ini`, `.DS_Store` in `Images/` or `Labels/` are ignored | nothing |
+| File names must match exactly; names differing only in case are errors | never renames files |
+| A ZIP's `project.json` may carry `round_id`; ingest refuses a ZIP of another round. A ZIP's images are checked against the round folder when it exists | may add `round_id` to `project.json` |
 
