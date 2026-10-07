@@ -1623,7 +1623,7 @@
       if(!(await confirmLeaveCurrent())){ hideLoading(); return; }
       releaseFolderLock();
       folder=null; session=null; round=null; resetSaveState(); statusMap=new Map(legacyStatus);
-      imageMetadata=[]; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); removedImages.clear(); boxesOwner=null; boxes=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false;
+      imageMetadata=[]; imageCache.clear(); clearThumbCache(); undoStacks.clear(); redoStacks.clear(); removedImages.clear(); boxesOwner=null; boxes=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false;
       uploadedNames=files.map(f=>f.name);
       for(let i=0;i<files.length;i++){
         if(!updateLoading((i/files.length)*50,`Analyzing ${i+1}/${files.length}...`)) return;
@@ -1998,6 +1998,8 @@
     const thumbs=new Map();          // image name -> element
     const thumbBitmaps=new Map();    // image name -> ImageBitmap (LRU, at most THUMB_CACHE)
     const THUMB_CACHE=400;
+    // Another folder may use the same file names for other pictures.
+    function clearThumbCache(){ thumbBitmaps.forEach(b=>b.close?.()); thumbBitmaps.clear(); }
     let thumbObserver=null, stripPending=false;
     let showStrip=true; try{ showStrip=localStorage.getItem('yoloble_show_strip')!=='0'; }catch{}
     function toggleStrip(force){
@@ -2369,7 +2371,7 @@ Generated: ${new Date().toISOString()}`;
       await storageReady;
       releaseFolderLock();
       folder=null; session=null; round=null; resetSaveState(); statusMap=new Map();
-      imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); removedImages.clear(); boxesOwner=null; boxes=[];
+      imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear(); clearThumbCache(); undoStacks.clear(); redoStacks.clear(); removedImages.clear(); boxesOwner=null; boxes=[];
       const loadWarnings=[];
       let statusEntries=new Map(), statusProblem=null, statusRaw=null;
 
@@ -2667,7 +2669,7 @@ Generated: ${new Date().toISOString()}`;
       markReviewed, nextUnreviewed, finishRound, showShortcuts, jumpToUncertain: ()=>jumpToUncertain(), toggleStrip: ()=>toggleStrip(),
       cancelLoading,
       // For the automated tests (tests/e2e.test.js); not used by the page.
-      _openFolder: openFolder, _routeUploads: files=>routeUploads(files), _buildBundle: ()=>buildBundle(), _round: ()=>round && {roundId:round.roundId, modelId:round.modelId, classes:round.classes, images:round.images.size}, _flushSaves: ()=>flushSaves(), _saveSession: ()=>saveSessionNow(), _storageReady: ()=>storageReady,
+      _openFolder: openFolder, _thumbCache: ()=>[...thumbBitmaps.keys()], _routeUploads: files=>routeUploads(files), _buildBundle: ()=>buildBundle(), _round: ()=>round && {roundId:round.roundId, modelId:round.modelId, classes:round.classes, images:round.images.size}, _flushSaves: ()=>flushSaves(), _saveSession: ()=>saveSessionNow(), _storageReady: ()=>storageReady,
       _loadReadOnlyForTests: h=>loadDatasetFromDirectory(h,false), _issues: ()=>currentIssues().map(({code,box,severity,fix})=>({code,box,severity,fix})), _gotoIndex: i=>gotoName(imageMetadata[i]?.name),
       _toClient: pts=>{ updateRenderState(); const r=canvas.getBoundingClientRect(); return pts.map(p=>{ const s=imageToScreen(p.x*RS.imgW,p.y*RS.imgH); return {x:r.left+s.x, y:r.top+s.y}; }); },
       _snapshot: ()=>({ index:currentImageIndex, name:imageMetadata[currentImageIndex]?.name??null, count:imageMetadata.length,

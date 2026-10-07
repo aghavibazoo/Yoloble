@@ -274,4 +274,14 @@ test('a recovered undo of a delete shows the image again', { skip }, async () =>
   } finally { await b.close(); }
 });
 
+test('thumbnails of a previous folder are not reused for another folder with the same file names', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'one', ORIGINAL());
+  await openRound(b, 'one');
+  await b.waitFor('YOLOUI._thumbCache().length >= 5');
+  await putFolder(b, 'two', ORIGINAL());
+  const right = await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory();
+    await YOLOUI._openFolder(await r.getDirectoryHandle('two')); return YOLOUI._thumbCache().length; })()`);
+  assert.equal(right, 0, 'nothing kept from the other folder');
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
