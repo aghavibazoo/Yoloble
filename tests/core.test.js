@@ -165,3 +165,53 @@ test('reviewProgress counts reviewed and deleted; labeled is not reviewed', () =
   assert.deepEqual(C.reviewProgress(Object.keys(st), n => st[n]), { total: 5, reviewed: 2, deleted: 1, remaining: 2 });
   assert.deepEqual(C.reviewProgress([], () => null), { total: 0, reviewed: 0, deleted: 0, remaining: 0 });
 });
+
+test('parseRoundJson reads the sample round', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const text = fs.readFileSync(path.join(__dirname, '..', 'samples', 'round_sample', 'round.json'), 'utf8');
+  const r = C.parseRoundJson(text);
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.warnings, []);
+  assert.equal(r.round.formatVersion, 1);
+  assert.equal(r.round.roundId, 3);
+  assert.equal(r.round.modelId, 'm0005');
+  assert.deepEqual(r.round.classes, IRS_CLASSES);
+  const e = r.round.images.get('clark_ave_01__a1b2c3d4__f006138.jpg');
+  assert.deepEqual(e, { reason: 'rare_class', reasonText: 'rare class: 3ax Bus', scores: { rarity: 0.82, uncertainty: 0, disagreement: 0 }, prelabelConf: [0.81, 0.79, 0.65] });
+});
+
+test('parseRoundJson refuses bad JSON and unsupported versions, and warns on bad entries', () => {
+  assert.match(C.parseRoundJson('{').error, /not valid JSON/);
+  assert.match(C.parseRoundJson('[]').error, /not a JSON object/);
+  assert.match(C.parseRoundJson('{"round_id":1}').error, /no integer format_version/);
+  const v2 = C.parseRoundJson('{"format_version":2}');
+  assert.equal(v2.ok, false); assert.equal(v2.unsupported, true); assert.match(v2.error, /format_version 2.*reads version 1/);
+  const r = C.parseRoundJson(JSON.stringify({ format_version: 1, classes: ['a'], images: { 'x.jpg': { prelabel_conf: [0.5, 'x'] }, 'y.jpg': 3 } }));
+  assert.equal(r.ok, true);
+  assert.equal(r.round.images.get('x.jpg').prelabelConf, null);
+  assert.equal(r.warnings.length, 2);
+  assert.match(C.parseRoundJson('{"format_version":1}').warnings.join(), /no valid "classes".*no "images"/);
+});
+
+test('prelabelApplies only while the pre-label file is untouched and not reviewed', () => {
+  const base = { status: 'labeled', conf: [0.9, 0.4], lineCount: 2, edited: false };
+  assert.equal(C.prelabelApplies(base), true);
+  assert.equal(C.prelabelApplies({ ...base, status: 'unlabeled' }), true);
+  assert.equal(C.prelabelApplies({ ...base, status: 'reviewed' }), false);
+  assert.equal(C.prelabelApplies({ ...base, status: 'deleted' }), false);
+  assert.equal(C.prelabelApplies({ ...base, edited: true }), false);
+  assert.equal(C.prelabelApplies({ ...base, lineCount: 3 }), false, 'a line was added: the file is not the pre-label file');
+  assert.equal(C.prelabelApplies({ ...base, conf: null }), false);
+  assert.equal(C.prelabelApplies({ ...base, conf: [], lineCount: 0 }), false);
+});
+
+test('attachPrelabels matches confidence by line, and confirmBox drops it', () => {
+  const parsed = C.parseLabelText('0 0.5 0.5 0.1 0.1\n2 0.2 0.2 0.1 0.1\n').boxes;
+  const pre = C.attachPrelabels(parsed, [0.91, 0.33]);
+  assert.deepEqual(pre, [
+    { cls: 0, xc: 0.5, yc: 0.5, w: 0.1, h: 0.1, pre: true, conf: 0.91 },
+    { cls: 2, xc: 0.2, yc: 0.2, w: 0.1, h: 0.1, pre: true, conf: 0.33 }]);
+  assert.deepEqual(C.confirmBox(pre[1]), { cls: 2, xc: 0.2, yc: 0.2, w: 0.1, h: 0.1 });
+  assert.equal(C.serializeLabels(pre), C.serializeLabels(parsed), 'pre-label flags never reach the file');
+});

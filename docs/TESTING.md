@@ -68,3 +68,13 @@ Tick each line. Each line was added with the change it covers.
 - [ ] **Finish round** with images left: the dialog lists them (click one to go there) and warns that irs ingest stops on unreviewed images. Clicking the progress counter goes to the next unreviewed image.
 - [ ] Review the rest (deleting one): after the last one a message says everything is done; **Finish round** says the round is ready for irs ingest. Smart Filters **Only Not reviewed** / **Only Reviewed** show the expected images.
 - [ ] Older status lists: a folder whose `image_status.json` only has `labeled`/`unlabeled`/`deleted` opens as before (0 reviewed).
+
+### Pre-label display
+
+- [ ] On the sample round, model boxes are dashed and their tag shows the confidence from `round.json` (first image: 0.81, 0.79, 0.65); the box list marks them **model 0.81** etc., below 0.5 in orange.
+- [ ] Move or resize a dashed box, or change its class: it turns solid (confirmed); the others stay dashed. **Ctrl+Z** makes it dashed again.
+- [ ] Close and reopen the folder: boxes still unchecked are dashed again with their confidence; edited ones are solid.
+- [ ] Mark an image reviewed, go back: all its boxes are solid. Reopen the folder: still solid.
+- [ ] Add a line to a pre-label file in Notepad before opening: that image's boxes are all solid (its file no longer matches `prelabel_conf`), the other images are unaffected.
+- [ ] A folder without `round.json` shows no dashed boxes and works as before. A `round.json` with `"format_version": 2` gives a yellow banner saying this Yoloble reads version 1, and no dashed boxes.
+- [ ] In a round folder, **Edit Classes** > **+ Add** is refused (the class list comes from `round.json`).

@@ -8,82 +8,10 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const http = require('node:http');
 const { launch, findChrome, sleep } = require('./cdp');
+const { serve, sampleFiles, putFolder, getFolder, openRound, snap, lineCount, settle, drag, clickAt, boxCenter } = require('./helpers');
 
-const ROOT = path.join(__dirname, '..');
-const SAMPLE = path.join(ROOT, 'samples', 'round_sample');
 const skip = findChrome() ? false : 'no Chromium-based browser found (set CHROME_PATH)';
-
-function serve() {
-  const types = { '.html': 'text/html', '.js': 'text/javascript', '.json': 'application/json', '.jpg': 'image/jpeg', '.txt': 'text/plain' };
-  const server = http.createServer((req, res) => {
-    const rel = decodeURIComponent(new URL(req.url, 'http://x').pathname).replace(/^\/+/, '');
-    const file = path.resolve(ROOT, rel || 'index.html');
-    if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); return res.end(); }
-    res.writeHead(200, { 'content-type': types[path.extname(file)] || 'application/octet-stream' });
-    fs.createReadStream(file).pipe(res);
-  });
-  return new Promise(r => server.listen(0, '127.0.0.1', () => r(server)));
-}
-
-function walk(dir, base = dir) {
-  return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => {
-    const full = path.join(dir, e.name);
-    return e.isDirectory() ? walk(full, base) : [path.relative(base, full).split(path.sep).join('/')];
-  });
-}
-const sampleFiles = () => Object.fromEntries(walk(SAMPLE).map(rel => [rel, fs.readFileSync(path.join(SAMPLE, rel))]));
-
-// Copy files ({rel: Buffer}) into OPFS directory `dir`, replacing it.
-async function putFolder(b, dir, files) {
-  const payload = Object.entries(files).map(([rel, buf]) => [rel, buf.toString('base64')]);
-  await b.evaluate(`(async () => {
-    const root = await navigator.storage.getDirectory();
-    try { await root.removeEntry(${JSON.stringify(dir)}, { recursive: true }); } catch {}
-    const top = await root.getDirectoryHandle(${JSON.stringify(dir)}, { create: true });
-    for (const [rel, b64] of ${JSON.stringify(payload)}) {
-      const parts = rel.split('/'); let d = top;
-      for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p, { create: true });
-      const w = await (await d.getFileHandle(parts.at(-1), { create: true })).createWritable();
-      await w.write(Uint8Array.from(atob(b64), c => c.charCodeAt(0))); await w.close();
-    }
-  })()`);
-}
-
-// Read OPFS directory `dir` back as {rel: Buffer}.
-async function getFolder(b, dir) {
-  const out = await b.evaluate(`(async () => {
-    const out = {};
-    async function walk(d, prefix) {
-      for await (const [name, h] of d.entries()) {
-        if (h.kind === 'directory') await walk(h, prefix + name + '/');
-        else { const buf = new Uint8Array(await (await h.getFile()).arrayBuffer()); let s = ''; for (const c of buf) s += String.fromCharCode(c); out[prefix + name] = btoa(s); }
-      }
-    }
-    await walk(await (await navigator.storage.getDirectory()).getDirectoryHandle(${JSON.stringify(dir)}), '');
-    return out;
-  })()`);
-  return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, Buffer.from(v, 'base64')]));
-}
-
-async function openRound(b, dir = 'round') {
-  await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._openFolder(await r.getDirectoryHandle(${JSON.stringify(dir)})); })()`);
-  await b.waitFor(`getComputedStyle(document.getElementById('loadingOverlay')).display === 'none' && YOLOUI._snapshot().count > 0`);
-  await b.evaluate('YOLOUI.fitToScreen()');
-}
-const snap = b => b.evaluate('YOLOUI._snapshot()');
-const lineCount = text => String(text).split('\n').filter(l => l.trim()).length;
-const settle = async b => { await b.evaluate('YOLOUI._flushSaves()'); await b.waitFor('YOLOUI._snapshot().unsaved === 0'); };
-
-// Drag on the canvas from one normalised image point to another.
-async function drag(b, from, to) {
-  const pts = await b.evaluate(`YOLOUI._toClient(${JSON.stringify([from, to])})`);
-  await b.mouse('mousePressed', pts[0].x, pts[0].y);
-  await b.mouse('mouseMoved', (pts[0].x + pts[1].x) / 2, (pts[0].y + pts[1].y) / 2);
-  await b.mouse('mouseMoved', pts[1].x, pts[1].y);
-  await b.mouse('mouseReleased', pts[1].x, pts[1].y);
-}
 
 let server, base;
 test.before(async () => { if (!skip) { server = await serve(); base = `http://127.0.0.1:${server.address().port}/index.html`; } });
@@ -158,14 +86,10 @@ test('fast key presses never move boxes from one image to another', { skip }, ()
   for (const [rel, buf] of Object.entries(original)) if (rel.startsWith('Labels/')) assert.ok(buf.equals(disk[rel]), `${rel} was rewritten`);
 }));
 
-async function clickAt(b, p) {
-  const [c] = await b.evaluate(`YOLOUI._toClient(${JSON.stringify([p])})`);
-  await b.mouse('mousePressed', c.x, c.y); await b.mouse('mouseReleased', c.x, c.y);
-}
-const boxCenter = bx => ({ x: bx.xc, y: bx.yc });
-
 test('classes: number keys, Shift+number for 10+, type-to-search picker, name labels toggle', { skip }, () => withBrowser(async b => {
-  await putFolder(b, 'round', ORIGINAL());
+  // A plain dataset folder (no round.json), where classes may be added.
+  const files = ORIGINAL(); delete files['round.json'];
+  await putFolder(b, 'round', files);
   await openRound(b);
   let s = await snap(b);
   // Select the first box (a Car) and change it with a number key.
@@ -298,6 +222,74 @@ test('review: Space marks reviewed and moves on, N confirms an empty frame, prog
   assert.deepEqual(Object.values(st).sort(), [...Array(11).fill('reviewed'), 'deleted'].sort());
   disk = await getFolder(b, 'round');
   assert.equal(disk[`Labels/${names[1].replace('.jpg', '.txt')}`].toString(), '', 'reviewed empty frame keeps its empty file');
+}));
+
+test('pre-labels: model boxes are shown unchecked with confidence until edited or reviewed, also after reopening', { skip }, async () => {
+  const os = require('node:os');
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'yoloble-pre-'));
+  let b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    await putFolder(b, 'round', ORIGINAL());
+    await openRound(b);
+    assert.deepEqual(await b.evaluate('YOLOUI._round()'), { roundId: 3, modelId: 'm0005', classes: ['Car', 'Pickup Truck', 'Van', '2ax Truck', '3ax Truck', '4ax Truck', '5ax+ Truck', '2ax Bus', '3ax Bus'], images: 12 });
+    let s = await snap(b);
+    assert.deepEqual(s.boxes.map(x => [x.pre, x.conf]), [[true, 0.81], [true, 0.79], [true, 0.65]]);
+    // Moving box 1 confirms it; the others stay unchecked.
+    const c = s.boxes[1];
+    await drag(b, { x: c.xc, y: c.yc }, { x: c.xc + 0.02, y: c.yc });
+    s = await snap(b);
+    assert.deepEqual(s.boxes.map(x => !!x.pre), [true, false, true]);
+    // Changing a class confirms too.
+    await clickAt(b, boxCenter(s.boxes[2]));
+    await b.key('2');
+    assert.deepEqual((await snap(b)).boxes.map(x => !!x.pre), [true, false, false]);
+    await settle(b);
+    await b.evaluate('YOLOUI._saveSession()');
+  } finally { await b.close(); }
+
+  // Reopen (normal close): the unchecked box is still unchecked; the file changed.
+  b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    await openRound(b);
+    let s = await snap(b);
+    assert.equal(b.dialogs.length, 0, 'nothing to recover');
+    assert.deepEqual(s.boxes.map(x => [!!x.pre, x.conf ?? null]), [[true, 0.81], [false, null], [false, null]]);
+    // Reviewing confirms everything.
+    await b.key(' ');
+    await b.waitFor('YOLOUI._snapshot().index === 1 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+    await b.evaluate('YOLOUI.previousImage()');
+    await b.waitFor('YOLOUI._snapshot().index === 0 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+    assert.deepEqual((await snap(b)).boxes.map(x => !!x.pre), [false, false, false]);
+  } finally { await b.close(); }
+});
+
+test('pre-labels: not trusted when the file no longer matches round.json, absent without round.json, refused for an unknown format', { skip }, () => withBrowser(async b => {
+  const files = ORIGINAL();
+  const changed = `Labels/${IMG0}.txt`;
+  files[changed] = Buffer.concat([files[changed], Buffer.from('2 0.100000 0.100000 0.050000 0.050000\n')]);
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  assert.deepEqual((await snap(b)).boxes.map(x => !!x.pre), [false, false, false, false]);
+  await b.evaluate('YOLOUI.addNewClass()');
+  assert.match(b.dialogs.at(-1), /class list comes from round\.json/);
+  await b.evaluate('YOLOUI.nextImage()');
+  await b.evaluate('YOLOUI.nextImage()');
+  await b.waitFor('YOLOUI._snapshot().index === 2 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  assert.ok((await snap(b)).boxes.every(x => x.pre), 'other images still show their pre-labels');
+
+  const legacy = ORIGINAL(); delete legacy['round.json'];
+  await putFolder(b, 'legacy', legacy);
+  await openRound(b, 'legacy');
+  assert.equal(await b.evaluate('YOLOUI._round()'), null);
+  assert.ok((await snap(b)).boxes.every(x => !x.pre));
+
+  const future = ORIGINAL(); future['round.json'] = Buffer.from(JSON.stringify({ format_version: 2, images: {} }));
+  await putFolder(b, 'future', future);
+  await openRound(b, 'future');
+  assert.equal(await b.evaluate('YOLOUI._round()'), null);
+  assert.match(await b.evaluate(`document.getElementById('noticeBannerMsg').textContent`), /format_version 2, but this Yoloble reads version 1/);
 }));
 
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
@@ -458,4 +450,3 @@ test('statuses kept in localStorage by older versions are moved to IndexedDB onc
   assert.equal(s.status[`${IMG0}.jpg`.toLowerCase()], 'deleted');
 }));
 
-module.exports = { putFolder, getFolder, openRound, snap, settle, drag, withBrowser, sampleFiles };
