@@ -99,3 +99,7 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Automated: `node --test tests/acceptance.test.js` generates a 50-frame round, reviews it (edits, reclassifications, deletions, empty frames, fixes), kills the browser after 25 frames, resumes with **Resume**, finishes, and checks the folder field by field against `docs/round_format.md`. `KEEP_ROUND=1` keeps the finished folder and prints its path.
 - [ ] Manual, 50 frames: `python tools/make_sample_round.py --frames 50 --out %TEMP%\round_050`, open it with **Choose Folder** and review every frame without using **Download Bundle**. Halfway, end Chrome in Task Manager; reopen `index.html`, click **Resume "round_050"**: same image, nothing lost. Finish: **Finish round** says the round is ready.
 - [ ] **irs ingest accepts the folder.** Run `irs ingest --round N` on the finished folder (once ingest exists), or meanwhile, from the irs repository: `python <Yoloble>/tests/irs_check_round.py <round folder>`, which reads the folder as `round_format.md` describes and checks every label file with irs's own `check_label_bytes`: it reports 0 problems.
+
+### Jump to uncertain boxes
+
+- [ ] On `hwy7_east__0badc0de__f015197.jpg` press **U** repeatedly: Yoloble selects and zooms to the unchecked model boxes in order 0.27, 0.58, 0.63, 0.68, 0.78, 0.86, then starts again; a message names each. **Shift+U** goes back. **F** fits the image again. On an image with no dashed boxes, **U** says there are none.

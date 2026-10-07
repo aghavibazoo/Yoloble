@@ -400,6 +400,28 @@ test('checks: Finish round reports classes.txt differing from round.json, foreig
   assert.doesNotMatch(text, /oops/);
 }));
 
+test('U cycles through unchecked model boxes, least confident first, zooming to each', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await b.evaluate('YOLOUI._gotoIndex(9)');   // f015197: confidences 0.86 0.78 0.68 0.63 0.58 0.27
+  await b.waitFor('YOLOUI._snapshot().index === 9 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  const zoom0 = await b.evaluate(`document.getElementById('zoomLevel').textContent`);
+  const seen = [];
+  for (let i = 0; i < 7; i++) { await b.key('u'); const s = await snap(b); seen.push(s.boxes[s.selected].conf); }
+  assert.deepEqual(seen, [0.27, 0.58, 0.63, 0.68, 0.78, 0.86, 0.27]);
+  assert.notEqual(await b.evaluate(`document.getElementById('zoomLevel').textContent`), zoom0, 'zoomed in');
+  await b.key('u', { shift: true });
+  const s = await snap(b);
+  assert.equal(s.boxes[s.selected].conf, 0.86, 'Shift+U goes back');
+  // An image without unchecked model boxes says so.
+  await b.key(' ', { shift: true });
+  await b.waitFor('YOLOUI._snapshot().index === 10 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await b.evaluate('YOLOUI.previousImage()');
+  await b.waitFor('YOLOUI._snapshot().index === 9 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await b.key('u');
+  assert.match(await b.evaluate(`document.getElementById('toast').textContent`), /No unchecked model boxes/);
+}));
+
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._loadReadOnlyForTests(await r.getDirectoryHandle('round')); })()`);

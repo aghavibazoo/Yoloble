@@ -309,6 +309,7 @@
           <button class="zoom-btn" onclick="YOLOUI.zoomIn()">+</button>
           <button class="zoom-btn" onclick="YOLOUI.fitToScreen()">Fit</button>
           <button class="btn" onclick="YOLOUI.resetZoom()">100%</button>
+          <button class="zoom-btn" onclick="YOLOUI.jumpToUncertain()" title="Zoom to the least confident unchecked model box (U, Shift+U back)">Uncertain (U)</button>
         </div>
         <div><label><input type="checkbox" id="showBoxes" checked onchange="YOLOUI.toggleBoxes()"/> Show Boxes (V)</label></div>
       </div>
@@ -540,6 +541,11 @@
       return boxes.map(({line,...b})=>({...b, pre:true, conf:Number.isFinite(conf?.[line]) ? conf[line] : null}));
     }
     const confirmBox=({pre,conf,...b})=>b;
+    // Unchecked model boxes, least confident first (no confidence last).
+    function uncertainOrder(boxes){
+      return boxes.map((b,i)=>({i, pre:!!b.pre, c:Number.isFinite(b.conf)?b.conf:Infinity}))
+        .filter(x=>x.pre).sort((a,b)=>a.c-b.c || a.i-b.i).map(x=>x.i);
+    }
 
     // ----- validation -----
     // Mirrors irs/dataset/labels.py check_label_bytes() and the label rules in
@@ -627,7 +633,7 @@
              parseStatusJson, serializeStatusJson, canonicalLabelText, planRecovery,
              PALETTE, classColor, textColorOn, classForKey, searchClasses,
              STATUSES, autoStatus, isDecided, reviewProgress,
-             ROUND_FORMATS, parseRoundJson, prelabelApplies, attachPrelabels, confirmBox,
+             ROUND_FORMATS, parseRoundJson, prelabelApplies, attachPrelabels, confirmBox, uncertainOrder,
              RULES, checkLabelText, checkImageBoxes, clampBox, compareClassLists };
   })();
   if(typeof module!=='undefined' && module.exports) module.exports=YoloCore;
@@ -1535,6 +1541,24 @@
       const sc=Object.entries(e.scores||{}).filter(([,v])=>typeof v==='number').map(([k,v])=>`${k} ${v.toFixed(2)}`).join(' · ');
       banner.title=sc ? `Selection scores: ${sc}` : '';
     }
+    // U: select and zoom to the next unchecked model box, least confident first.
+    let uncertainCursor=-1;
+    function jumpToUncertain(back=false){
+      const order=YoloCore.uncertainOrder(boxes);
+      if(!order.length){ showToast('No unchecked model boxes on this image.'); return; }
+      const pos=order.indexOf(selectedBoxIndex);
+      uncertainCursor = pos>=0 ? (pos+(back?-1:1)+order.length)%order.length : (back?order.length-1:0);
+      selectedBoxIndex=order[uncertainCursor]; updateBoxList(); zoomToBox(boxes[selectedBoxIndex]);
+      const b=boxes[selectedBoxIndex];
+      showToast(`Model box ${uncertainCursor+1} of ${order.length} by confidence: ${className(b.cls)} ${Number.isFinite(b.conf)?b.conf.toFixed(2):'?'}`, 2500);
+    }
+    function zoomToBox(b){
+      updateRenderState(); if(!RS.imgW) return;
+      const bw=Math.max(b.w*RS.imgW,8), bh=Math.max(b.h*RS.imgH,8);
+      zoom=Math.max(0.1,Math.min(5, Math.min(viewW*0.35/bw, viewH*0.35/bh)));
+      panX=zoom*(RS.imgW/2-b.xc*RS.imgW); panY=zoom*(RS.imgH/2-b.yc*RS.imgH);
+      updateZoomLevel(); scheduleDraw();
+    }
     function markReviewed(force=false){ return queueNav(()=>markReviewedNow({force})); }
     async function markReviewedNow({advance=true, force=false}={}){
       if(boxesOwner===null) return;
@@ -2037,6 +2061,7 @@ Generated: ${new Date().toISOString()}`;
       else if(!e.ctrlKey && !e.metaKey && !e.altKey && YoloCore.classForKey(e.code,e.shiftKey)>=0){ const ci=YoloCore.classForKey(e.code,e.shiftKey); if(ci<CLASS_NAMES.length){ e.preventDefault(); chooseClass(ci); } }
       else if((e.key==='c'||e.key==='C') && !e.ctrlKey && !e.metaKey){ e.preventDefault(); openClassPicker(); }
       else if((e.key==='l'||e.key==='L') && !e.ctrlKey && !e.metaKey){ toggleClassNames(); }
+      else if((e.key==='u'||e.key==='U') && !e.ctrlKey && !e.metaKey){ jumpToUncertain(e.shiftKey); }
       else if(e.key==='Escape'){ if(selectedBoxIndex!==-1){ selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); } }
       else if(e.key==='Tab'){ e.preventDefault(); currentClass = e.shiftKey ? (currentClass-1+CLASS_NAMES.length)%CLASS_NAMES.length : (currentClass+1)%CLASS_NAMES.length; setCurrentClass(currentClass); }
       else if(e.key==='v'||e.key==='V'){ toggleBoxes(); }
@@ -2124,7 +2149,7 @@ Generated: ${new Date().toISOString()}`;
       showDetailedDebug, deleteCurrentImage,
       chooseFolder, grantWriteAccess, retrySave, resumeLastFolder, hideNotice,
       openClassPicker, toggleClassNames: ()=>toggleClassNames(), _renderClassList: renderClassList,
-      markReviewed, nextUnreviewed, finishRound,
+      markReviewed, nextUnreviewed, finishRound, jumpToUncertain: ()=>jumpToUncertain(),
       cancelLoading,
       // For the automated tests (tests/e2e.test.js); not used by the page.
       _openFolder: openFolder, _round: ()=>round && {roundId:round.roundId, modelId:round.modelId, classes:round.classes, images:round.images.size}, _flushSaves: ()=>flushSaves(), _saveSession: ()=>saveSessionNow(), _storageReady: ()=>storageReady,

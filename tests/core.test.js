@@ -296,3 +296,11 @@ test('compareClassLists requires classes.txt to equal round.json line for line',
   assert.equal(C.compareClassLists(txt + 'Pedestrian\n', IRS_CLASSES), 'classes.txt line 10 is "Pedestrian", round.json has no class there');
   assert.equal(C.compareClassLists('Car\nVan\n', ['Car', 'Pickup Truck', 'Van']), 'classes.txt line 2 is "Van", round.json has "Pickup Truck"');
 });
+
+test('uncertainOrder lists unchecked model boxes, least confident first', () => {
+  const boxes = [
+    { pre: true, conf: 0.9 }, { conf: 0.1 }, { pre: true, conf: 0.3 }, { pre: true, conf: null }, { pre: true, conf: 0.3 },
+  ];
+  assert.deepEqual(C.uncertainOrder(boxes), [2, 4, 0, 3]);
+  assert.deepEqual(C.uncertainOrder([]), []);
+});
