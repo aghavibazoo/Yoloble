@@ -132,3 +132,11 @@ Tick each line. Each line was added with the change it covers.
 ### Undo a delete
 
 - [ ] Edit and review an image, then **Delete Image**: a message says it was deleted, with **Undo**. **Undo** within 8 s brings the image back at its place, with its boxes and its previous status (`image_status.json` follows).
+
+### Robustness (from the code review)
+
+- [ ] Smart Filters **Any Class** = 3, go to an image with a 3ax Truck, change that box to Car: Yoloble stays on that image, and only its label file changes.
+- [ ] Smart Filters **Only Not reviewed**, then **Space** several times: each press reviews the image shown and moves to the next unreviewed one; no label file changes.
+- [ ] With a folder open, drop a `.txt` label file onto the window: Yoloble refuses with a message and nothing changes on disk.
+- [ ] A label line with class `12` (9 classes) and an image file that is not a real JPEG: the folder still opens; Checks flags the class; the broken image shows a message and can be deleted.
+- [ ] Copy a round without `classes.txt`: the class names come from `round.json` (Finish round still reports the missing file).

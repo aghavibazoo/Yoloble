@@ -34,7 +34,7 @@
     .thumb .idx{position:absolute;left:3px;bottom:2px;font-size:10px;background:rgba(0,0,0,.7);padding:0 4px;border-radius:3px}
     .thumb .tick{position:absolute;right:3px;bottom:2px;font-size:11px;color:#2ecc71;background:rgba(0,0,0,.7);padding:0 3px;border-radius:3px}
     .thumb.issue::after{content:'!';position:absolute;right:3px;top:2px;width:14px;height:14px;border-radius:50%;background:#e74c3c;color:#fff;font-size:10px;font-weight:700;text-align:center;line-height:14px}
-    .sidebar{width:350px;background:#2d2d2d;border-left:2px solid #333;padding:20px;overflow-y:auto}
+    .sidebar{width:350px;flex:none;background:#2d2d2d;border-left:2px solid #333;padding:20px;overflow-y:auto;overflow-x:hidden}
     .section{margin-bottom:25px}
     .section h3{margin-bottom:10px;color:#4a90e2;font-size:16px}
     .class-selector{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:15px}
@@ -843,12 +843,17 @@
             session.edited.add(n);
             if(folder) save.pendingLabels.set(n,text);
           }
-          for(const {name:n,status} of plan.statuses) statusMap.set(norm(n),status);
+          for(const {name:n,status} of plan.statuses){
+            statusMap.set(norm(n),status);
+            const i=indexOfName(n);
+            if(folder && status==='reviewed' && !save.diskText.has(n) && i>=0 && !(labels[i]||[]).length) save.pendingLabels.set(n,'');
+          }
           if(folder && ns) save.pendingStatus=true;
         } else {
           plan.labels.forEach(({name:n})=>delete session.savedLabels[n]);
         }
       }
+      plan.conflicts.forEach(n=>delete session.savedLabels[n]);
       if(plan.conflicts.length) showNotice(`${plan.conflicts.length} image(s) in "${name}" were changed outside Yoloble after it last saved them; the folder's version was kept.`);
       return rec.current;
     }
@@ -884,6 +889,7 @@
       if(prev===next) return false;
       statusMap.set(k,next); persistStatus();
       if(user && folder) noteStatusChanged();
+      if(user && isFiltered) invalidateFilterCache();
       scheduleReviewUI();
       return true;
     }
@@ -1041,10 +1047,11 @@
     let boxesOwner=null;
     const indexOfName=name=>imageMetadata.findIndex(m=>m.name===name);
     function commitEdit(){
-      const i=boxesOwner===null ? -1 : indexOfName(boxesOwner);
+      const owner=boxesOwner, i=owner===null ? -1 : indexOfName(owner);
       if(i<0) return;
-      labels[i]=[...boxes]; updateImageInDatabase(i);
-      noteLabelsChanged(boxesOwner, labels[i]);
+      const arr=[...boxes];
+      labels[i]=arr; updateImageInDatabase(i);
+      noteLabelsChanged(owner, arr);
     }
 
     const getDeletedSet=()=>{ const s=new Set(); for(const [n,st] of statusMap.entries()) if(st==='deleted') s.add(n); return s; };
@@ -1294,7 +1301,7 @@
       CLASS_NAMES.forEach((_,id)=> labelDatabase.classIndex[id]=new Set());
       for(let i=0;i<imageMetadata.length;i++){
         const nm=imageMetadata[i].name, arr=labels[i]||[], hasBoxes=arr.length>0, forced=statusMap.get(norm(nm))==='labeled' && !arr.length;
-        const classes=new Set(); arr.forEach(b=>{ classes.add(b.cls); labelDatabase.classIndex[b.cls].add(i); });
+        const classes=new Set(); arr.forEach(b=>{ classes.add(b.cls); (labelDatabase.classIndex[b.cls] ||= new Set()).add(i); });
         labelDatabase.imageIndex[i]={hasLabels:hasBoxes||forced,classes,boxCount:arr.length,lastModified:Date.now()};
         const st=YoloCore.autoStatus(statusMap.get(norm(nm)),hasBoxes); setStatus(nm,st,{user:false});
         if(hasBoxes||forced||st==='reviewed') labelDatabase.statusIndex.labeled.add(i); else labelDatabase.statusIndex.unlabeled.add(i);
@@ -1312,7 +1319,8 @@
       if(has||forced||st==='reviewed') labelDatabase.statusIndex.labeled.add(i); else labelDatabase.statusIndex.unlabeled.add(i);
       if(isFiltered) invalidateFilterCache(); updateFilterStats();
     }
-    function invalidateFilterCache(){ filterCache.clear(); if(isFiltered) applyFilters(); }
+    // After an edit or a status change: recompute the filtered list, never move.
+    function invalidateFilterCache(){ filterCache.clear(); if(isFiltered) applyFilters({navigate:false}); }
     function rebuildDatabase(){ buildLabelDatabase(); if(isFiltered) applyFilters(); }
 
     const intersect=(A,B)=>{const R=new Set(); for(const x of A) if(B.has(x)) R.add(x); return R}
@@ -1320,8 +1328,8 @@
     const diff=(A,B)=>{const R=new Set(); for(const x of A) if(!B.has(x)) R.add(x); return R}
 
     // FIXED: Proper filtering with status list and deleted list
-    function applyFilters(){
-      if(!labelDatabase.isBuilt){ alert('Database not ready.'); return }
+    function applyFilters({navigate=true}={}){
+      if(!labelDatabase.isBuilt){ if(navigate) alert('Database not ready.'); return }
       const s=$("filterStatus").value, c=$("filterClass").value, op=$("filterOperator").value;
       const key=`s:${s}|c:${c}|m:${JSON.stringify(classFilterState)}|op:${op}|hide:${hidePrevLabeled}`;
       if(filterCache.has(key)){ currentFilteredIndices=filterCache.get(key); isFiltered=currentFilteredIndices.length<imageMetadata.length; updateFilterResults(); updateUI(); return; }
@@ -1363,8 +1371,8 @@
       filterCache.set(key,currentFilteredIndices); 
       isFiltered=currentFilteredIndices.length<imageMetadata.length;
       
-      if(isFiltered && !currentFilteredIndices.includes(currentImageIndex)){
-        if(currentFilteredIndices.length){ currentImageIndex=currentFilteredIndices[0]; loadCurrentImage(); } 
+      if(navigate && isFiltered && !currentFilteredIndices.includes(currentImageIndex)){
+        if(currentFilteredIndices.length) gotoName(imageMetadata[currentFilteredIndices[0]].name);
         else { alert('No images match filters'); clearFilters(); return; }
       }
       updateFilterResults(); updateUI(); updateQuickNavigation();
@@ -1410,6 +1418,10 @@
       const lbls=files.filter(f=>/\.txt$/i.test(f.name)&&!/classes\.(txt|names)$/i.test(f.name));
       const stats=files.filter(f=>/\.(json|txt)$/i.test(f.name)&&/(image_status|deleted_list|labeled_list)/i.test(f.name));
       const cls=files.filter(f=>/(classes\.txt|classes\.names)$/i.test(f.name));
+      if(folder && !imgs.length && (lbls.length || stats.length || cls.length)){
+        alert(`A folder is open ("${folder.name}"). Label files, status lists and classes.txt cannot be dropped onto it: change its files on disk and open it again, or drop images to work without a folder.`);
+        return;
+      }
       if(imgs.length) await loadImagesOptimized(imgs);
       if(lbls.length) await loadLabelsOptimized(lbls);
       if(stats.length) await handleStatusListUploadFiles(stats);
@@ -1485,17 +1497,23 @@
     }
     function parseLabelFile(text){ return YoloCore.parseLabelText(text).boxes.map(({line,...b})=>b); }
 
+    let loadGen=0;
     async function loadImageAtIndex(idx){
       if(idx<0||idx>=imageMetadata.length) return;
+      const gen=++loadGen;
       // Cached by name: indexes shift when an image is deleted.
       const meta=imageMetadata[idx]; let img=imageCache.get(meta.name);
       if(!img){
-        img=new Image(); const blob=meta.file; img.src=URL.createObjectURL(blob);
-        await new Promise((res,rej)=>{ img.onload=()=>res(); img.onerror=()=>rej('Load failed'); });
-        imageCache.set(meta.name,img);
+        img=new Image(); img.src=URL.createObjectURL(meta.file);
+        try{ await new Promise((res,rej)=>{ img.onload=()=>res(); img.onerror=()=>rej(new Error('cannot be decoded')); }); imageCache.set(meta.name,img); meta.broken=false; }
+        catch{ img=null; meta.broken=true; }
       }
-      meta.loaded=true; meta.img=img; meta.width=img.naturalWidth; meta.height=img.naturalHeight;
-      boxes=[...labels[idx]||[]]; boxesOwner=meta.name; selectedBoxIndex=-1; updateBoxList(); updateZoomLevel(); scheduleDraw(); updateUndoButton();
+      if(gen!==loadGen) return;                    // a newer load took over
+      const i=indexOfName(meta.name); if(i<0) return; // deleted while loading
+      currentImageIndex=i;
+      meta.loaded=!!img; meta.img=img; if(img){ meta.width=img.naturalWidth; meta.height=img.naturalHeight; }
+      boxes=[...labels[i]||[]]; boxesOwner=meta.name; selectedBoxIndex=-1; updateBoxList(); updateZoomLevel(); scheduleDraw(); updateUndoButton();
+      if(meta.broken) showToast(`${meta.name} could not be read as an image. You can delete it.`, 6000);
       if(unsavedCount()) scheduleSave(0);
       scheduleSessionSave();
       $("loadedImages").textContent=imageCache.size();
@@ -1514,9 +1532,9 @@
           if(/image_status\.json$/i.test(f.name)){
             const arr=JSON.parse(text); if(Array.isArray(arr)) arr.forEach(r=>{ if(r?.name&&r?.status) statusMap.set(norm(r.name),r.status) });
           } else if(/deleted_list\.txt$/i.test(f.name)){
-            text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'deleted'));
+            text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(norm(n),'deleted'));
           } else if(/labeled_list\.txt$/i.test(f.name)){
-            text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'labeled'));
+            text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(norm(n),'labeled'));
           } else if(f.name.toLowerCase().endsWith('.txt')){
             text.split(/\r?\n/).forEach(line=>{
               const p=line.split(',').map(s=>s.trim());
@@ -1546,6 +1564,7 @@
       imageMetadata=nm; labels=nl;
       if(!imageMetadata.length) currentImageIndex=0; else if(currentImageIndex>=imageMetadata.length) currentImageIndex=imageMetadata.length-1;
       labelDatabase.isBuilt=false; buildLabelDatabase(); updateFilterStats(); updateDatabaseStatus();
+      if(isFiltered) invalidateFilterCache();
     }
 
     // Deleted images are kept in memory for this session so a delete can be undone.
@@ -1635,7 +1654,7 @@
     }
     function markReviewed(force=false){ return queueNav(()=>markReviewedNow({force})); }
     async function markReviewedNow({advance=true, force=false}={}){
-      if(boxesOwner===null) return;
+      if(boxesOwner===null || indexOfName(boxesOwner)<0) return;
       const name=boxesOwner;
       const issues=currentIssues();
       if(issues.length && !force){
@@ -1652,8 +1671,8 @@
       if(advance) await advanceAfterReview();
     }
     async function advanceAfterReview(){
-      const v=getValidIndices(), p=v.indexOf(currentImageIndex);
-      if(p>=0 && p<v.length-1) return nextImageNow();
+      // The reviewed image may just have left a filtered list: look for any later one.
+      if(getValidIndices().some(i=>i>currentImageIndex)) return nextImageNow();
       const left=YoloCore.reviewProgress(allImageNames(), statusOfName).remaining;
       showToast(left ? `That was the last image. ${left} image${left>1?'s are':' is'} not reviewed yet: click the progress counter to go to the next one.` : 'Every image is reviewed or deleted. Press Finish round.');
     }
@@ -1937,7 +1956,11 @@
     function draw(){
       updateRenderState();
       const cw=viewW,ch=viewH; ctx.clearRect(0,0,cw,ch); ctx.fillStyle='#0a0a0a'; ctx.fillRect(0,0,cw,ch);
-      const meta=imageMetadata[currentImageIndex]; if(!meta?.img) return;
+      const meta=imageMetadata[currentImageIndex];
+      if(!meta?.img){
+        if(meta?.broken){ ctx.fillStyle='#ff8a80'; ctx.font='16px system-ui,Segoe UI,Arial'; ctx.textAlign='center'; ctx.fillText(`${meta.name} could not be read as an image`, cw/2, ch/2); ctx.textAlign='left'; }
+        return;
+      }
       const sw=RS.scaleX*RS.imgW, sh=RS.scaleY*RS.imgH;
       ctx.drawImage(meta.img, RS.dx, RS.dy, sw, sh);
       if(!showBoxes||!boxes.length) return;
@@ -2171,8 +2194,8 @@ Generated: ${new Date().toISOString()}`;
           if(r.error) loadWarnings.push(`${r.error}. It will be rewritten from the statuses shown here when you change one.`);
           statusEntries=r.entries; statusEntries.forEach((st,n)=>{ statusMap.set(norm(n), st); save.diskStatus.set(n, st); });
         } else {
-          if(deletedTxtHandle){ const t=await (await deletedTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'deleted')); }
-          if(labeledTxtHandle){ const t=await (await labeledTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'labeled')); }
+          if(deletedTxtHandle){ const t=await (await deletedTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(norm(n),'deleted')); }
+          if(labeledTxtHandle){ const t=await (await labeledTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(norm(n),'labeled')); }
         }
         persistStatus();
       }catch{}
@@ -2197,6 +2220,7 @@ Generated: ${new Date().toISOString()}`;
 
       let classesText=null;
       if(classFileHandle?.name==='classes.txt'){ try{ classesText=await (await classFileHandle.getFile()).text(); }catch{} }
+      if(!classFileHandle && round?.classes){ CLASS_NAMES=round.classes.slice(); rebuildClassUI(); }
       if(classFileHandle){
         try{
           const file=await classFileHandle.getFile();

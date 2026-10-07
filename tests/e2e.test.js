@@ -622,6 +622,115 @@ test('drag and drop without a folder still works: images, labels, classes, old s
   } finally { await b.close(); }
 });
 
+test('regression: an edit while a Smart Filter is active is saved to its own image only', { skip }, () => withBrowser(async b => {
+  const orig = ORIGINAL();
+  await putFolder(b, 'round', orig);
+  await openRound(b);
+  const setSel = (id, v) => b.evaluate(`(() => { const s = document.getElementById('${id}'); s.value = '${v}'; s.dispatchEvent(new Event('change')); })()`);
+  await setSel('filterClass', '3');
+  await b.waitFor(`YOLOUI._snapshot().owner === 'clark_ave_01__a1b2c3d4__f016352.jpg'`);
+  await b.key('d');
+  await b.waitFor(`YOLOUI._snapshot().owner === 'hwy7_east__0badc0de__f008412.jpg'`);
+  await b.evaluate('YOLOUI.fitToScreen()');
+  let s = await snap(b);
+  const k = s.boxes.findIndex(x => x.cls === 3);
+  await clickAt(b, boxCenter(s.boxes[k]));
+  await b.key('0');   // the image no longer has class 3, so it drops out of the filter
+  await b.evaluate('new Promise(r => setTimeout(r, 300))');
+  s = await snap(b);
+  assert.equal(s.owner, 'hwy7_east__0badc0de__f008412.jpg', 'stays on the edited image');
+  await settle(b);
+  const disk = await getFolder(b, 'round');
+  assert.ok(disk['Labels/clark_ave_01__a1b2c3d4__f016352.txt'].equals(orig['Labels/clark_ave_01__a1b2c3d4__f016352.txt']), 'other image untouched');
+  const edited = disk['Labels/hwy7_east__0badc0de__f008412.txt'].toString().split('\n').filter(Boolean);
+  assert.ok(!edited.some(l => l.startsWith('3 ')), 'class change saved on the edited image');
+}));
+
+test('regression: Space with the Only Not reviewed filter reviews the next images in order and changes no label file', { skip }, () => withBrowser(async b => {
+  const orig = ORIGINAL();
+  await putFolder(b, 'round', orig);
+  await openRound(b);
+  const loaded = i => b.waitFor(`YOLOUI._snapshot().index === ${i} && YOLOUI._snapshot().owner === YOLOUI._snapshot().name`);
+  await b.evaluate('YOLOUI.markReviewed(true)'); await loaded(1);
+  await b.evaluate('YOLOUI.markReviewed(true)'); await loaded(2);
+  await b.evaluate(`(() => { const s = document.getElementById('filterStatus'); s.value = 'unreviewed'; s.dispatchEvent(new Event('change')); })()`);
+  for (const next of [3, 4, 5]) { await b.evaluate('YOLOUI.markReviewed(true)'); await loaded(next); }
+  await settle(b);
+  const disk = await getFolder(b, 'round');
+  for (const [rel, buf] of Object.entries(orig)) if (rel.startsWith('Labels/')) assert.ok(buf.equals(disk[rel]), `${rel} changed`);
+  const st = JSON.parse(disk['image_status.json']);
+  const reviewed = st.filter(r => r.status === 'reviewed').map(r => r.name).sort();
+  const names = Object.keys(orig).filter(r => r.startsWith('Images/')).map(r => r.slice(7)).sort();
+  assert.deepEqual(reviewed, names.slice(0, 5));
+}));
+
+test('regression: label files dropped onto an open folder are refused', { skip }, () => withBrowser(async b => {
+  const orig = ORIGINAL();
+  await putFolder(b, 'round', orig);
+  await openRound(b);
+  await b.evaluate(`(() => { const dt = new DataTransfer(); dt.items.add(new File(['5 0.5 0.5 0.2 0.2\\n'], '${IMG0}.txt', { type: 'text/plain' }));
+    document.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true })); })()`);
+  await b.waitFor('YOLOUI._snapshot() && document.querySelectorAll("#boxList .box-item").length === 3');
+  assert.match(b.dialogs.at(-1), /cannot be dropped onto it/);
+  for (let i = 0; i < 3; i++) await b.key('d');
+  await b.waitFor('YOLOUI._snapshot().index === 3 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await settle(b);
+  const disk = await getFolder(b, 'round');
+  for (const [rel, buf] of Object.entries(orig)) if (rel.startsWith('Labels/')) assert.ok(buf.equals(disk[rel]), `${rel} changed`);
+}));
+
+test('regression: a class ID outside the list and an unreadable JPEG do not stop the folder from opening', { skip }, () => withBrowser(async b => {
+  const files = ORIGINAL();
+  files[`Labels/${IMG0}.txt`] = Buffer.concat([files[`Labels/${IMG0}.txt`], Buffer.from('12 0.300000 0.300000 0.050000 0.050000\n')]);
+  const broken = 'clark_ave_01__a1b2c3d4__f010808';
+  files[`Images/${broken}.jpg`] = Buffer.from('not a jpeg');
+  delete files['round.json'];
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  const checks = await b.evaluate(`[...document.querySelectorAll('#checksPanel .check-item .msg')].map(e => e.textContent)`);
+  assert.deepEqual(checks, ['Box 4 class is not in the class list']);
+  await b.key(' ', { shift: true });
+  await b.waitFor(`YOLOUI._snapshot().owner === '${broken}.jpg'`);
+  assert.match(await b.evaluate(`document.getElementById('toast').textContent`), /could not be read as an image/);
+  await b.evaluate('YOLOUI.deleteCurrentImage()');
+  await b.waitFor(`YOLOUI._snapshot().count === 11 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name`);
+  await settle(b);
+  const st = JSON.parse((await getFolder(b, 'round'))['image_status.json']);
+  assert.equal(st.find(r => r.name === `${broken}.jpg`).status, 'deleted');
+  assert.equal(st.find(r => r.name === `${IMG0}.jpg`).status, 'reviewed');
+}));
+
+test('regression: a confirmed empty frame restored after a crash gets its empty label file', { skip }, async () => {
+  const os = require('node:os');
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'yoloble-empty-'));
+  const empty = 'clark_ave_01__a1b2c3d4__f010808';
+  const files = ORIGINAL(); delete files[`Labels/${empty}.txt`];
+  let b = await launch({ userDataDir: profile });
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  await b.key('d');
+  await b.waitFor(`YOLOUI._snapshot().owner === '${empty}.jpg'`);
+  // Fail before the file is even created.
+  await b.evaluate(`const real = FileSystemDirectoryHandle.prototype.getFileHandle;
+    FileSystemDirectoryHandle.prototype.getFileHandle = function (n, o) { return o && o.create ? Promise.reject(new DOMException('simulated', 'InvalidStateError')) : real.call(this, n, o); };`);
+  await b.key('n');
+  await b.waitFor('YOLOUI._snapshot().saveError !== null');
+  await b.evaluate('YOLOUI._saveSession()');
+  await b.kill();
+  b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    assert.equal((await getFolder(b, 'round'))[`Labels/${empty}.txt`], undefined, 'no file before recovery');
+    await openRound(b);
+    assert.match(b.dialogs[0], /kept 1 status change/);
+    await settle(b);
+    const disk = await getFolder(b, 'round');
+    assert.equal(disk[`Labels/${empty}.txt`]?.toString(), '', 'empty label file written');
+    assert.equal(JSON.parse(disk['image_status.json']).find(r => r.name === `${empty}.jpg`).status, 'reviewed');
+  } finally { await b.close(); }
+});
+
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._loadReadOnlyForTests(await r.getDirectoryHandle('round')); })()`);
