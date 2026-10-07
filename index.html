@@ -243,6 +243,61 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script id="yoloble-core">
+  "use strict";
+  // Pure logic, no DOM access. The app below uses it, and tests/core.test.js
+  // loads this exact block in Node, so keep it free of browser globals.
+  const YoloCore = (() => {
+    // Python str.splitlines() for the line endings label files use.
+    function splitLines(text){
+      const s=String(text ?? '');
+      if(!s) return [];
+      const lines=s.split(/\r\n|\r|\n/);
+      if(lines[lines.length-1]==='') lines.pop();
+      return lines;
+    }
+
+    // Lenient reader for the editor. Every box keeps `line`, its 0-based line
+    // index in the file, so per-line data (pre-label confidence) can be matched.
+    function parseLabelText(text){
+      const boxes=[], bad=[];
+      const src=String(text ?? '').replace(/^﻿/,'');
+      if(!src.trim()) return {boxes, bad, lineCount:0};
+      const lines=splitLines(src);
+      lines.forEach((line,i)=>{
+        const f=line.trim().split(/\s+/).filter(Boolean);
+        if(!f.length){ bad.push({line:i,text:line,reason:'blank line'}); return; }
+        if(f.length!==5){ bad.push({line:i,text:line,reason:`expected 5 fields, got ${f.length}`}); return; }
+        const n=f.map(Number);
+        if(!n.every(Number.isFinite)){ bad.push({line:i,text:line,reason:'not a number'}); return; }
+        boxes.push({cls:Math.floor(n[0]),xc:n[1],yc:n[2],w:n[3],h:n[4],line:i});
+      });
+      return {boxes, bad, lineCount:lines.length};
+    }
+
+    const fmt=v=>(Math.abs(v)<5e-7?0:v).toFixed(6);
+    // Canonical file text: one box per line, six decimals, trailing newline.
+    // No boxes gives an empty file.
+    function serializeLabels(boxes){
+      if(!boxes || !boxes.length) return '';
+      return boxes.map(b=>`${b.cls} ${fmt(b.xc)} ${fmt(b.yc)} ${fmt(b.w)} ${fmt(b.h)}`).join('\n')+'\n';
+    }
+
+    function corners(b){ return {x1:b.xc-b.w/2, y1:b.yc-b.h/2, x2:b.xc+b.w/2, y2:b.yc+b.h/2}; }
+    function iou(a,b){
+      const A=corners(a), B=corners(b);
+      const iw=Math.max(0,Math.min(A.x2,B.x2)-Math.max(A.x1,B.x1));
+      const ih=Math.max(0,Math.min(A.y2,B.y2)-Math.max(A.y1,B.y1));
+      const inter=iw*ih, uni=a.w*a.h+b.w*b.h-inter;
+      return uni>0 ? inter/uni : 0;
+    }
+
+    function labelFileNameFor(imageName){ return String(imageName).replace(/\.[^/.]+$/,'')+'.txt'; }
+
+    return { splitLines, parseLabelText, serializeLabels, corners, iou, labelFileNameFor };
+  })();
+  if(typeof module!=='undefined' && module.exports) module.exports=YoloCore;
+  </script>
   <script>
   "use strict";
   const YOLOUI = (() => {
@@ -410,8 +465,7 @@
         if(!updateLoading((i/imgs.length)*70,`Packaging ${i+1}/${imgs.length}...`)) return;
         const base=m.name.replace(/\.[^/.]+$/,'');
         const arr=labels[idx]||[];
-        const content=arr.map(b=>`${b.cls} ${b.xc.toFixed(6)} ${b.yc.toFixed(6)} ${b.w.toFixed(6)} ${b.h.toFixed(6)}`).join('\n');
-        labelsFolder.file(`${base}.txt`, content);
+        labelsFolder.file(`${base}.txt`, YoloCore.serializeLabels(arr));
       }
       zip.file('classes.txt', CLASS_NAMES.join('\n'));
       zip.file('dataset_statistics.txt', buildStatsText());
@@ -598,12 +652,7 @@
         ensureColors(); rebuildClassUI(); alert(`Loaded ${CLASS_NAMES.length} classes.`);
       }catch{ alert('Failed to load classes file.') }
     }
-    function parseLabelFile(text){
-      return text.trim().split('\n').map(line=>{
-        const p=line.trim().split(/\s+/).map(parseFloat);
-        if(p.length===5&&p.every(n=>!isNaN(n))) return {cls:Math.floor(p[0]),xc:p[1],yc:p[2],w:p[3],h:p[4]};
-      }).filter(Boolean);
-    }
+    function parseLabelFile(text){ return YoloCore.parseLabelText(text).boxes.map(({line,...b})=>b); }
 
     async function loadImageAtIndex(idx){
       if(idx<0||idx>=imageMetadata.length) return;
