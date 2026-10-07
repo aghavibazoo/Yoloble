@@ -1555,9 +1555,7 @@
         }
         persistStatus();
         if(imageMetadata.length){
-          const del=getDeletedSet(); const before=imageMetadata.length;
-          imageMetadata=imageMetadata.filter(m=>!del.has(norm(m.name)));
-          if(imageMetadata.length!==before) labels=labels.slice(0,imageMetadata.length);
+          // Images and their labels are filtered together (never by position).
           applyDeletedFilter(); await loadCurrentImage(); updateQuickNavigation(); updateUI();
         }
         alert('Status list(s) loaded');

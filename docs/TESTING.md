@@ -147,4 +147,5 @@ Tick each line. Each line was added with the change it covers.
 
 ### Audit fixes
 
-- [ ] Save race (B1): on a slow disk (a network share, or DevTools > Network throttling has no effect here, so use a USB stick), draw a box and press **Ctrl+Z** right away: after **All changes saved**, the label file matches the screen (the box is gone).
+- [ ] Save race (B1): on a slow disk (a network share or a slow USB stick), draw a box and press **Ctrl+Z** right away: after **All changes saved**, the label file matches the screen (the box is gone).
+- [ ] Drop (B2): drag `a.jpg`, `b.jpg`, `c.jpg`, their `.txt` labels and a `deleted_list.txt` naming `a.jpg` into the window at once: `b.jpg` and `c.jpg` show their own boxes.

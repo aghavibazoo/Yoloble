@@ -46,4 +46,23 @@ test('B1: undoing an edit while it is being written is written too (slow disk)',
   assert.equal(lineCount(disk), 3, 'the folder holds what the screen shows');
 }));
 
-module.exports = { withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
+// Drop files (name, text | null for an image) through the same entry point as a real drop.
+async function dropFiles(b, files) {
+  await b.evaluate(`(async () => {
+    const jpg = await (await fetch('../samples/round_sample/Images/${IMG0}.jpg')).blob();
+    const list = ${JSON.stringify(files)}.map(([n, t]) => t === null ? new File([jpg], n, { type: 'image/jpeg' }) : new File([t], n, { type: 'text/plain' }));
+    await YOLOUI._routeUploads(list);
+  })()`);
+  await b.waitFor(`getComputedStyle(document.getElementById('loadingOverlay')).display === 'none' && YOLOUI._snapshot().owner !== null`);
+}
+const clsOf = async (b, i) => { await b.evaluate(`YOLOUI._gotoIndex(${i})`); await loaded(b, i); const s = await snap(b); return [s.name, s.boxes.map(x => x.cls).join(',')]; };
+
+test('B2: dropping images, labels and a deleted_list together keeps each image with its own labels', { skip }, () => withBrowser(async b => {
+  await dropFiles(b, [['a.jpg', null], ['b.jpg', null], ['c.jpg', null],
+    ['a.txt', '0 0.1 0.1 0.1 0.1\n'], ['b.txt', '1 0.5 0.5 0.2 0.2\n'], ['c.txt', '2 0.8 0.8 0.3 0.3\n2 0.2 0.8 0.1 0.1\n'], ['deleted_list.txt', 'a.jpg\n']]);
+  assert.equal((await snap(b)).count, 2);
+  assert.deepEqual(await clsOf(b, 0), ['b.jpg', '1']);
+  assert.deepEqual(await clsOf(b, 1), ['c.jpg', '2,2']);
+}));
+
+module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
