@@ -61,9 +61,9 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Each class has its own colour (sidebar list, box outline, name tag, box list); the nine irs classes are easy to tell apart on the sample images.
 - [ ] Click a box, press **8**: it becomes 3ax Bus. Press **C**, type `pick`, **Enter**: it becomes Pickup Truck. **Ctrl+Z** / **Undo** brings back 3ax Bus. Click empty space or press **Esc**, then **2**: the chip **New boxes: Van** changes and the next box drawn is a Van.
 - [ ] In the **C** picker: `bus` lists both buses, `3 bus` finds 3ax Bus, `8` finds class 8, arrow keys move the highlight, **Esc** closes without change. The sidebar search box filters the same way and **Enter** picks the first match.
-- [ ] More than ten classes: **Edit Classes** > **+ Add** twice (11 classes). **Shift+0** picks class 10, **Shift+1** class 11 does nothing (no such class), keys 0–9 still pick 0–9. A box drawn with class 10 is saved as `10 …`.
+- [ ] More than ten classes, on a copy of the sample without `round.json` (a round's class list is fixed): **Edit Classes** > **+ Add** twice (11 classes). **Shift+0** picks class 10, **Shift+1** class 11 does nothing (no such class), keys 0–9 still pick 0–9. A box drawn with class 10 is saved as `10 …`.
 - [ ] **L** (or the **Class names** checkbox) hides the name tags on boxes (the selected box keeps its tag); the setting is remembered after a reload.
-- [ ] With a folder open, removing a class or **Reset** is refused with a message; renaming and adding still work and never change `classes.txt`.
+- [ ] With any folder open, removing a class or **Reset** is refused with a message. In a folder without `round.json`, renaming and adding still work and never change `classes.txt`.
 
 ### Reviewed status
 
