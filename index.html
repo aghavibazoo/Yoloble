@@ -1142,7 +1142,9 @@
       try{
         for(const [name,text] of [...save.pendingLabels]){
           save.pendingLabels.delete(name); save.inFlight.set(name,text);
-          try{ await writeLabelFile(name,text); }
+          try{ await writeLabelFile(name,text);
+            const fn=folder.labelFiles.get(name)||YoloCore.labelFileNameFor(name);
+            if(folder.labelFileList && !folder.labelFileList.includes(fn)) folder.labelFileList.push(fn); }
           catch(e){ save.inFlight.delete(name); if(!save.pendingLabels.has(name)) save.pendingLabels.set(name,text); throw e; }
           save.inFlight.delete(name);
           if(folder!==target) return;
@@ -1978,6 +1980,14 @@
         [...inRound].filter(n=>!have.has(n)).forEach(n=>warnings.push({text:`${n} is listed in round.json but missing from Images/`}));
       }
       allImageNames().forEach(n=>{ const st=statusOfName(n); if(!YoloCore.STATUSES.includes(st)) errors.push({name:n, text:`unknown status "${st}" in image_status.json`}); });
+      if(folder){
+        // A reviewed image needs a label file (empty = confirmed empty frame).
+        allImageNames().filter(n=>statusOfName(n)==='reviewed' && !save.diskText.has(n) && !save.pendingLabels.has(n) && !save.inFlight.has(n))
+          .forEach(n=>errors.push({name:n, text:'is reviewed but has no label file'}));
+        // Every label file belongs to an image.
+        const bases=new Set(folder.imageNames.map(n=>n.replace(/\.[^/.]+$/,'')));
+        (folder.labelFileList||[]).filter(f=>!bases.has(f.replace(/\.txt$/i,''))).forEach(f=>errors.push({text:`Labels/${f} belongs to no image in Images/`}));
+      }
       imageMetadata.forEach((m,i)=>{
         imageIssues(i).forEach(iss=>(iss.severity==='error'?errors:warnings).push({name:m.name, text:iss.message}));
       });
@@ -2445,10 +2455,12 @@ Generated: ${new Date().toISOString()}`;
       // it and lose the reviews in it: stay read-only until the reviewer decides.
       if(statusProblem) folder.writable=false;
 
+      const labelFileList=[]; folder.labelFileList=labelFileList;
       if(labelsHandle){
         const map=new Map();
         for await (const [lname,lhandle] of labelsHandle.entries()){
           if(lhandle.kind==='file' && /\.txt$/i.test(lname)){
+            labelFileList.push(lname);
             const file=await lhandle.getFile(), d=YoloCore.decodeUtf8(new Uint8Array(await file.arrayBuffer()));
             map.set(lname.replace(/\.txt$/i,''), {text:d.text, utf8:d.ok, fileName:lname});
           }

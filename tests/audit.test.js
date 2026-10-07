@@ -218,4 +218,19 @@ test('pre-label trust: a pre-label file changed outside Yoloble (same line count
   } finally { await b.close(); }
 });
 
+test('Finish round flags a reviewed image without a label file and a label file without an image', { skip }, () => withBrowser(async b => {
+  const files = ORIGINAL();
+  const gone = 'clark_ave_01__a1b2c3d4__f016352';
+  delete files[`Labels/${gone}.txt`];
+  const st = JSON.parse(files['image_status.json']); st.find(r => r.name === `${gone}.jpg`).status = 'reviewed';
+  files['image_status.json'] = Buffer.from(JSON.stringify(st));
+  files['Labels/orphan__frame__f000001.txt'] = Buffer.from('0 0.5 0.5 0.1 0.1\n');
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  await b.evaluate('YOLOUI.finishRound()');
+  const body = await b.evaluate(`document.getElementById('modalBody').textContent`);
+  assert.match(body, new RegExp(`${gone}\.jpg: is reviewed but has no label file`));
+  assert.match(body, /Labels\/orphan__frame__f000001\.txt belongs to no image in Images\//);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
