@@ -1236,7 +1236,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // empty file records a confirmed empty frame.
       const same = !save.forceRewrite.has(name) && (disk===text || diskBoxes===text && disk!==null || (disk===null && text==='' && statusOfName(name)!=='reviewed'));
       // Nothing to write any more (e.g. the edit was undone): forget an earlier failure too.
-      if(same){ save.pendingLabels.delete(name); save.fileErrors.delete(name); } else save.pendingLabels.set(name,text);
+      if(same){
+        save.pendingLabels.delete(name); save.fileErrors.delete(name);
+        // A status held back for this label (see statusForFile) is due now.
+        if((save.diskStatus.get(name) ?? 'unlabeled')!==statusOfName(name)) save.pendingStatus=true;
+      } else save.pendingLabels.set(name,text);
       scheduleSave();
     }
     function noteStatusChanged(){ if(!folder) return; save.pendingStatus=true; scheduleSave(); }

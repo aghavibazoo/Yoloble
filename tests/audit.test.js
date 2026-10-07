@@ -616,4 +616,24 @@ test('N2: an owner blocked by a dialog keeps a second tab read-only; Check again
   await b.waitFor(`/All changes saved/.test(YOLOUI._snapshot().saveState)`);
 }));
 
+const lockLabel = b => b.evaluate(`(() => { window.__fail = true; const P = FileSystemDirectoryHandle.prototype, g = P.getFileHandle;
+  P.getFileHandle = function (n, o) { if (window.__fail && o?.create && n === '${IMG0}.txt') return Promise.reject(new DOMException('locked', 'NoModificationAllowedError')); return g.call(this, n, o); }; })()`);
+const statusOnDisk = async (b, n = `${IMG0}.jpg`) => JSON.parse((await getFolder(b, 'round'))['image_status.json']).find(r => r.name === n).status;
+
+test('NEW-2: a review held back for its label is written when that label edit is undone', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await lockLabel(b);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await b.key(' '); await loaded(b, 1);
+  await sleep(1200);
+  assert.notEqual(await statusOnDisk(b), 'reviewed', 'held back');
+  await b.key('a'); await loaded(b, 0);
+  await b.key('z', { ctrl: true });               // the labels are as on disk again: the review stands for them
+  await b.evaluate('window.__fail = false');
+  await settle(b);
+  assert.equal(await statusOnDisk(b), 'reviewed');
+  assert.match((await snap(b)).saveState, /All changes saved/);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
