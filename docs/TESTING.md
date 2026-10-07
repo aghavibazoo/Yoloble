@@ -93,7 +93,7 @@ Tick each line. Each line was added with the change it covers.
 ### Validation
 
 - [ ] `clark_ave_01__e5f60718__f014209.jpg`: **Checks** says *Box 4 duplicates box 3*, the box has a red ring. **Space** does not mark it reviewed: a message says why and selects the box. **Delete box** in Checks fixes it; then **Space** works.
-- [ ] `hwy7_east__0badc0de__f015197.jpg`: an orange ring shows a box too small to see; Checks says *near zero size (1.0×0.7 px)*. **Space** refuses, **Shift+Space** marks it reviewed anyway.
+- [ ] `hwy7_east__0badc0de__f015197.jpg`: an orange ring shows a box too small to see; Checks says *near zero size (1.0×0.7 px)* (a warning: irs accepts it).
 - [ ] Draw a box starting outside the image: it is clipped to the image edge. Drag a box past the edge: it stops at the edge.
 - [ ] Edit a label file in Notepad so a box sticks out of the image (e.g. x centre 0.99, width 0.1) and reopen: Checks offers **Clip to image**. A line like `3 0.5 oops 0.1 0.1` gives a warning on opening and *unreadable line* in Checks; moving to another image leaves the file alone; **Rewrite file** removes the line.
 - [ ] Change `Van` to `van` in `classes.txt` and reopen: **Finish round** lists *classes.txt line 3 is "van", round.json has "Van"*. An extra image copied into `Images/` is listed as *not listed in round.json*. Problems are listed per image; clicking a name opens it.
@@ -155,3 +155,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Raw label bytes (M4): in a label file add the line `1 1.0000004 0.5 0.1 0.1`, in another write a coordinate as `0x1`, and save one with a UTF-8 BOM (Notepad "UTF-8 with BOM"): on opening, Checks and **Finish round** report each (the BOM as a problem on line 1), exactly as `irs ingest` would; **Clip** / **Rewrite file** fix them.
 - [ ] Broken status file (M5): truncate `image_status.json` (or put a row without `"status"`) and open the folder: a banner says what is wrong and that the folder is read-only; edits are not written. **Replace image_status.json (keep a backup)** writes `image_status.json.bak` with the old bytes, then the new status file and the pending edits.
 - [ ] Two windows (M2): open the round folder in two tabs: the second says it is open in another window and is read-only; edits there are not written. Edit `image_status.json` in Notepad (mark an image `deleted`) while Yoloble has the folder open, then review an image in Yoloble: the file keeps both changes and a banner says so.
+- [ ] Warnings do not block: on `hwy7_east__0badc0de__f015197.jpg` **Space** marks it reviewed and a message repeats the near-zero-size warning; on the duplicate image **Space** still refuses.

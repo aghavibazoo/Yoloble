@@ -343,7 +343,7 @@ test('reason banner shows why each frame was selected, and the round in the head
   assert.equal(r.round, '');
 }));
 
-test('checks: Space refuses an image with problems, fixes from the Checks panel, Shift+Space overrides, boxes stay inside the image', { skip }, () => withBrowser(async b => {
+test('checks: Space refuses an image with errors, fixes from the Checks panel, warnings do not block, boxes stay inside the image', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await openRound(b);
   const loaded = i => b.waitFor(`YOLOUI._snapshot().index === ${i} && YOLOUI._snapshot().owner === YOLOUI._snapshot().name`);
@@ -372,10 +372,11 @@ test('checks: Space refuses an image with problems, fixes from the Checks panel,
   assert.equal((await snap(b)).boxes.length, 3);
   await b.key(' '); await loaded(6);
 
-  // Near-zero box (f015197, index 9): a warning, overridden with Shift+Space.
+  // Near-zero box (f015197, index 9): only a warning (irs accepts it): Space works and says so.
   await b.evaluate('YOLOUI._gotoIndex(9)'); await loaded(9);
   assert.deepEqual(await checks(), ['Box 6 is near zero size (1.0×0.7 px)']);
-  await b.key(' ', { shift: true }); await loaded(10);
+  await b.key(' '); await loaded(10);
+  await b.waitFor("/with a warning: Box 6 is near zero size/.test(document.getElementById('toast').textContent)");
   await settle(b);
   const st = JSON.parse((await getFolder(b, 'round'))['image_status.json'].toString());
   assert.equal(st.find(r => r.name === 'hwy7_east__0badc0de__f015197.jpg').status, 'reviewed');

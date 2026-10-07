@@ -1832,13 +1832,15 @@
     async function markReviewedNow({advance=true, force=false}={}){
       if(boxesOwner===null || indexOfName(boxesOwner)<0) return;
       const name=boxesOwner;
-      const issues=currentIssues();
+      // Only what irs ingest rejects stops Space; warnings are shown, not enforced.
+      const all=currentIssues(), issues=all.filter(x=>x.severity==='error'), warnings=all.filter(x=>x.severity!=='error');
       if(issues.length && !force){
         const first=issues[0];
         if(first.box>=0){ selectedBoxIndex=first.box; updateBoxList(); scheduleDraw(); }
         showToast(`Not marked reviewed: ${first.message}${issues.length>1?` (and ${issues.length-1} more)`:''}. Fix it under Checks, or press Shift+Space to mark it reviewed anyway.`, 7000);
         return;
       }
+      if(warnings.length) setTimeout(()=>showToast(`Reviewed ${name} with a warning: ${warnings[0].message}${warnings.length>1?` (and ${warnings.length-1} more)`:''}.`, 5000), 0);
       if(boxes.some(b=>b.pre)) boxes=boxes.map(YoloCore.confirmBox); // reviewing confirms every box
       commitEdit();
       setStatus(name,'reviewed');
