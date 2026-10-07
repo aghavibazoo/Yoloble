@@ -284,4 +284,17 @@ test('thumbnails of a previous folder are not reused for another folder with the
   assert.equal(right, 0, 'nothing kept from the other folder');
 }));
 
+test('object URLs are freed: images still draw after their URL is revoked', { skip }, () => withBrowser(async b => {
+  await b.evaluate(`window.__urls = new Set(); const c = URL.createObjectURL, r = URL.revokeObjectURL;
+    URL.createObjectURL = o => { const u = c(o); window.__urls.add(u); return u; }; URL.revokeObjectURL = u => { window.__urls.delete(u); return r(u); };`);
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  for (let i = 1; i < 6; i++) { await b.key('d'); await loaded(b, i); }
+  assert.equal(await b.evaluate('window.__urls.size'), 0, 'no object URL left open');
+  // The image is still drawn (a pixel of the road is not the empty background).
+  await b.evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
+  const px = await b.evaluate(`(() => { const c = document.getElementById('canvas'); const d = c.getContext('2d').getImageData(c.width / 2, c.height / 2, 1, 1).data; return [d[0], d[1], d[2]]; })()`);
+  assert.notDeepEqual(px, [10, 10, 10]);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

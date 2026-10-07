@@ -161,3 +161,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Old browser statuses: with a `yolo_image_status` localStorage entry marking an image `deleted`, a folder whose `image_status.json` lacks that image shows it and never writes `deleted` for it; a folder without `image_status.json` still hides it, as older versions did.
 - [ ] Undo a delete that cannot be saved (read-only status file), close the browser, fix the file and reopen: the restore dialog brings the image back into the image list.
 - [ ] Open one round, then another folder whose images have the same file names but other pictures: the thumbnails show the new pictures.
+- [ ] Memory: in DevTools > Memory, browse 200 images; memory stays flat (object URLs are freed). **Download Bundle**, **Stats** and **Export** (classes) still download their files.

@@ -1425,7 +1425,13 @@
       rebuildClassUI();
     }
     function rebuildClassUI(){ setupClassSelector(); setupClassFilterGrid(); updateClassEditor(); if(currentClass>=CLASS_NAMES.length) currentClass=0; updateClassSelector(); if(labelDatabase.isBuilt) buildLabelDatabase(); updateUI(); scheduleDraw(); }
-    function exportClassFile(){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([CLASS_NAMES.join('\n')],{type:'text/plain'})); a.download='classes.txt'; a.click(); }
+    // Saves a blob as a download and frees its object URL afterwards.
+    function downloadBlob(blob, fileName){
+      const url=URL.createObjectURL(blob), a=document.createElement('a');
+      a.href=url; a.download=fileName; a.click();
+      setTimeout(()=>URL.revokeObjectURL(url), 30000); // the download has started by then
+    }
+    function exportClassFile(){ downloadBlob(new Blob([CLASS_NAMES.join('\n')+'\n'],{type:'text/plain'}), 'classes.txt'); }
 
     async function downloadBundle(){
       if(!imageMetadata.length){ alert('No images loaded'); return }
@@ -1433,7 +1439,7 @@
       try{
         const blob=await buildBundle();
         if(!blob) return;
-        const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='yolo_editor_bundle.zip'; a.click();
+        downloadBlob(blob, 'yolo_editor_bundle.zip');
       }catch(e){ console.error(e); alert('ZIP failed: '+(e?.message||e)); }
       finally{ hideLoading(); }
     }
@@ -1686,9 +1692,11 @@
       // Cached by name: indexes shift when an image is deleted.
       const meta=imageMetadata[idx]; let img=imageCache.get(meta.name);
       if(!img){
-        img=new Image(); img.src=URL.createObjectURL(meta.file);
+        const url=URL.createObjectURL(meta.file);
+        img=new Image(); img.src=url;
         try{ await new Promise((res,rej)=>{ img.onload=()=>res(); img.onerror=()=>rej(new Error('cannot be decoded')); }); imageCache.set(meta.name,img); meta.broken=false; }
         catch{ img=null; meta.broken=true; }
+        finally{ URL.revokeObjectURL(url); } // the decoded image stays usable
       }
       if(gen!==loadGen) return;                    // a newer load took over
       const i=indexOfName(meta.name); if(i<0) return; // deleted while loading
@@ -2661,7 +2669,7 @@ Generated: ${new Date().toISOString()}`;
       previousImage, nextImage, goToImage,
       zoomIn, zoomOut, fitToScreen, resetZoom, toggleBoxes,
       undo, redo,
-      exportStats: ()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buildStatsText()],{type:'text/plain'})); a.download='dataset_statistics.txt'; a.click(); },
+      exportStats: ()=>downloadBlob(new Blob([buildStatsText()],{type:'text/plain'}), 'dataset_statistics.txt'),
       downloadBundle,
       showDetailedDebug, deleteCurrentImage,
       chooseFolder, grantWriteAccess, retrySave, replaceBrokenStatusFile, resumeLastFolder, hideNotice,
