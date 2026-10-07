@@ -128,3 +128,7 @@ Tick each line. Each line was added with the change it covers.
 ### ZIP export (fallback)
 
 - [ ] After reviewing a few images and deleting one, **Download Bundle**: the ZIP has `labels/` (no file for the deleted image), `classes.txt` identical to the folder's, `lists/image_status.json` with exactly the images of this folder and their names unchanged (also when an older Yoloble left other statuses in the browser), `lists/deleted_list.txt`, `lists/labeled_list.txt` and `project.json` (with the round ID). `irs ingest --round N --export <zip>` accepts it.
+
+### Undo a delete
+
+- [ ] Edit and review an image, then **Delete Image**: a message says it was deleted, with **Undo**. **Undo** within 8 s brings the image back at its place, with its boxes and its previous status (`image_status.json` follows).

@@ -549,6 +549,30 @@ test('ZIP export (fallback): labels for kept images, classes.txt, lists with exa
   assert.equal(out.first, files['Labels/clark_ave_01__a1b2c3d4__f006138.txt'].toString());
 }));
 
+test('a deleted image can be restored with Undo on the message', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await b.key(' ');   // review image 0 ...
+  await b.waitFor('YOLOUI._snapshot().index === 1 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await b.evaluate('YOLOUI.previousImage()');
+  await b.waitFor('YOLOUI._snapshot().index === 0 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });   // ... edit it ...
+  await b.evaluate('YOLOUI.deleteCurrentImage()');          // ... and delete it
+  await b.waitFor('YOLOUI._snapshot().count === 11 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await settle(b);
+  let st = JSON.parse((await getFolder(b, 'round'))['image_status.json'].toString());
+  assert.equal(st.find(r => r.name === IMG0 + '.jpg').status, 'deleted');
+  assert.match(await b.evaluate(`document.getElementById('toast').textContent`), /^Deleted clark_ave_01__a1b2c3d4__f006138\.jpg\.Undo$/);
+  await b.evaluate(`document.querySelector('#toast button').click()`);
+  await b.waitFor(`YOLOUI._snapshot().count === 12 && YOLOUI._snapshot().owner === '${IMG0}.jpg'`);
+  const s = await snap(b);
+  assert.equal(s.index, 0);
+  assert.equal(s.boxes.length, 4, 'with its edit');
+  await settle(b);
+  st = JSON.parse((await getFolder(b, 'round'))['image_status.json'].toString());
+  assert.equal(st.find(r => r.name === IMG0 + '.jpg').status, 'reviewed', 'back to its status before the delete');
+}));
+
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._loadReadOnlyForTests(await r.getDirectoryHandle('round')); })()`);

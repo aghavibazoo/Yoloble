@@ -1433,7 +1433,7 @@
       showLoading('Analyzing Images...','Preparing image metadata...');
       if(!(await confirmLeaveCurrent())){ hideLoading(); return; }
       folder=null; session=null; round=null; resetSaveState(); statusMap=new Map(legacyStatus);
-      imageMetadata=[]; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); boxesOwner=null; boxes=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false;
+      imageMetadata=[]; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); removedImages.clear(); boxesOwner=null; boxes=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false;
       uploadedNames=files.map(f=>f.name);
       for(let i=0;i<files.length;i++){
         if(!updateLoading((i/files.length)*50,`Analyzing ${i+1}/${files.length}...`)) return;
@@ -1538,21 +1538,46 @@
     function applyDeletedFilter(){
       const del=getDeletedSet(); if(!del.size) return;
       const nm=[], nl=[];
-      for(let i=0;i<imageMetadata.length;i++){ if(!del.has(norm(imageMetadata[i].name))){ nm.push(imageMetadata[i]); nl.push(labels[i]||[]); } }
+      for(let i=0;i<imageMetadata.length;i++){
+        if(!del.has(norm(imageMetadata[i].name))){ nm.push(imageMetadata[i]); nl.push(labels[i]||[]); }
+        else removedImages.set(imageMetadata[i].name,{meta:imageMetadata[i], labels:labels[i]||[], prev:removedImages.get(imageMetadata[i].name)?.prev});
+      }
       if(nm.length===imageMetadata.length) return;
       imageMetadata=nm; labels=nl;
       if(!imageMetadata.length) currentImageIndex=0; else if(currentImageIndex>=imageMetadata.length) currentImageIndex=imageMetadata.length-1;
       labelDatabase.isBuilt=false; buildLabelDatabase(); updateFilterStats(); updateDatabaseStatus();
     }
 
+    // Deleted images are kept in memory for this session so a delete can be undone.
+    const removedImages=new Map(); // name -> {meta, labels, prev status}
     function deleteCurrentImage(){
-      if(!imageMetadata.length) return;
-      const meta=imageMetadata[currentImageIndex];
-      if(confirm(`Delete "${meta.name}"?`)){
-        setStatus(meta.name,'deleted');
+      return queueNav(async()=>{
+        if(boxesOwner===null) return;
+        const name=boxesOwner;
+        if(!confirm(`Delete "${name}"? It is marked deleted and left out of the round; the file stays on disk.`)) return;
+        commitEdit();
+        removedImages.set(name,{prev:statusOfName(name)});
+        setStatus(name,'deleted');
         applyDeletedFilter();
-        if(imageMetadata.length) loadCurrentImage(); else updateUI();
-      }
+        if(imageMetadata.length) await loadCurrentImage();
+        else { boxes=[]; boxesOwner=null; selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); }
+        updateUI();
+        showToast(`Deleted ${name}.`, 8000, {label:'Undo', fn:()=>undoDelete(name)});
+      });
+    }
+    function undoDelete(name){
+      return queueNav(async()=>{
+        const r=removedImages.get(name);
+        if(!r?.meta || statusOfName(name)!=='deleted') return;
+        commitEdit();
+        statusMap.delete(norm(name));
+        setStatus(name, r.prev && r.prev!=='deleted' ? r.prev : YoloCore.autoStatus(undefined, r.labels.length>0));
+        let i=imageMetadata.findIndex(m=>m.name.localeCompare(name)>0); if(i<0) i=imageMetadata.length;
+        imageMetadata.splice(i,0,r.meta); labels.splice(i,0,r.labels); removedImages.delete(name);
+        labelDatabase.isBuilt=false; buildLabelDatabase();
+        currentImageIndex=i; await loadCurrentImage(); updateUI();
+        showToast(`Restored ${name}.`);
+      });
     }
     // ----- review -----
     const allImageNames=()=>[...new Set(folder ? folder.imageNames : uploadedNames)];
@@ -1882,7 +1907,12 @@
 
     // ----- small UI helpers -----
     let toastTimer=null;
-    function showToast(msg,ms=4000){ const t=$("toast"); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),ms); }
+    function showToast(msg,ms=4000,action=null){
+      const t=$("toast"); t.textContent=msg;
+      if(action){ const b=document.createElement('button'); b.className='btn btn-plain'; b.style.marginLeft='12px'; b.style.padding='3px 10px'; b.textContent=action.label;
+        b.onclick=()=>{ t.classList.remove('show'); action.fn(); }; t.appendChild(b); }
+      t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),ms);
+    }
     function showModal(title, bodyNode, buttons){
       $("modalTitle").textContent=title; const b=$("modalBody"); b.innerHTML=''; b.appendChild(bodyNode);
       const a=$("modalActions"); a.innerHTML='';
@@ -2113,7 +2143,7 @@ Generated: ${new Date().toISOString()}`;
       showLoading('Loading Dataset...','Scanning structure...');
       await storageReady;
       folder=null; session=null; round=null; resetSaveState(); statusMap=new Map(legacyStatus);
-      imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); boxesOwner=null; boxes=[];
+      imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); removedImages.clear(); boxesOwner=null; boxes=[];
       const loadWarnings=[];
       let statusEntries=new Map();
 
