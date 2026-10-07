@@ -297,4 +297,17 @@ test('object URLs are freed: images still draw after their URL is revoked', { sk
   assert.notDeepEqual(px, [10, 10, 10]);
 }));
 
+test('file and class names are shown as text, never interpreted as HTML', { skip }, () => withBrowser(async b => {
+  const files = ORIGINAL(), jpg = files[`Images/${IMG0}.jpg`];
+  const evil = '<img src=x onerror="window.__pwned=1">.jpg';
+  await putFolder(b, 'evil', { [`Images/${evil}`]: jpg, 'classes.txt': Buffer.from('<b onmouseover="window.__pwned=2">Car</b>\nVan\n'),
+    [`Labels/${evil.replace('.jpg', '.txt')}`]: Buffer.from('0 0.5 0.5 0.2 0.2\n') });
+  await openRound(b, 'evil');
+  await b.evaluate(`(() => { const s = document.getElementById('filterClass'); s.value = '0'; s.dispatchEvent(new Event('change')); })()`);
+  await b.evaluate('new Promise(r => setTimeout(r, 300))');
+  assert.equal(await b.evaluate('document.getElementById("imageName").textContent.includes("<img src=x")'), true);
+  assert.equal(await b.evaluate('window.__pwned'), undefined);
+  assert.equal(await b.evaluate('document.querySelectorAll("#imageName img, #filterResults b, #debugInfo img").length'), 0);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

@@ -162,3 +162,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Undo a delete that cannot be saved (read-only status file), close the browser, fix the file and reopen: the restore dialog brings the image back into the image list.
 - [ ] Open one round, then another folder whose images have the same file names but other pictures: the thumbnails show the new pictures.
 - [ ] Memory: in DevTools > Memory, browse 200 images; memory stays flat (object URLs are freed). **Download Bundle**, **Stats** and **Export** (classes) still download their files.
+- [ ] A class named `<b>Car</b>` in `classes.txt` shows literally (with the angle brackets) in the class list, filters and box tags.
