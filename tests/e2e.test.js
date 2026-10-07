@@ -422,6 +422,45 @@ test('U cycles through unchecked model boxes, least confident first, zooming to 
   assert.match(await b.evaluate(`document.getElementById('toast').textContent`), /No unchecked model boxes/);
 }));
 
+test('finer editing: edge handles, Shift+arrow nudge as one undo step, redo', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  let s = await snap(b);
+  const orig = s.boxes[0];
+  await clickAt(b, boxCenter(orig));
+  // Five nudges right, one up.
+  for (let i = 0; i < 5; i++) await b.key('ArrowRight', { shift: true, code: 'ArrowRight', keyCode: 39 });
+  await b.key('ArrowUp', { shift: true, code: 'ArrowUp', keyCode: 38 });
+  s = await snap(b);
+  assert.equal(s.index, 0, 'Shift+arrow does not change image');
+  assert.ok(Math.abs(s.boxes[0].xc - (orig.xc + 5 / 640)) < 1e-9);
+  assert.ok(Math.abs(s.boxes[0].yc - (orig.yc - 1 / 360)) < 1e-9);
+  assert.equal(s.boxes[0].pre, undefined, 'nudging confirms a model box');
+  // One undo step for the whole run; redo brings it back.
+  await b.key('z', { ctrl: true });
+  s = await snap(b);
+  assert.deepEqual(s.boxes[0], orig);
+  assert.equal(await b.evaluate(`document.getElementById('redoBtn').disabled`), false);
+  // Clicking a box without moving it keeps the redo history.
+  await clickAt(b, boxCenter(orig));
+  await b.key('y', { ctrl: true });
+  s = await snap(b);
+  assert.ok(Math.abs(s.boxes[0].xc - (orig.xc + 5 / 640)) < 1e-9, 'Ctrl+Y redoes');
+  await b.key('z', { ctrl: true });
+  await b.key('z', { ctrl: true, shift: true });
+  assert.ok(Math.abs((await snap(b)).boxes[0].xc - (orig.xc + 5 / 640)) < 1e-9, 'Ctrl+Shift+Z redoes');
+
+  // Edge handle: drag the right edge of the selected box outwards; height stays.
+  s = await snap(b);
+  await clickAt(b, boxCenter(s.boxes[0]));
+  const bx = (await snap(b)).boxes[0];
+  await drag(b, { x: bx.xc + bx.w / 2, y: bx.yc }, { x: bx.xc + bx.w / 2 + 0.05, y: bx.yc + 0.03 });
+  const after = (await snap(b)).boxes[0];
+  assert.ok(Math.abs(after.w - (bx.w + 0.05)) < 0.004, `width grew: ${after.w}`);
+  assert.ok(Math.abs(after.h - bx.h) < 1e-6, 'height unchanged');
+  await settle(b);
+}));
+
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._loadReadOnlyForTests(await r.getDirectoryHandle('round')); })()`);

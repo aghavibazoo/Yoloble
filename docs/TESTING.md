@@ -103,3 +103,9 @@ Tick each line. Each line was added with the change it covers.
 ### Jump to uncertain boxes
 
 - [ ] On `hwy7_east__0badc0de__f015197.jpg` press **U** repeatedly: Yoloble selects and zooms to the unchecked model boxes in order 0.27, 0.58, 0.63, 0.68, 0.78, 0.86, then starts again; a message names each. **Shift+U** goes back. **F** fits the image again. On an image with no dashed boxes, **U** says there are none.
+
+### Finer box editing
+
+- [ ] A selected box has handles on all four corners and all four edges; dragging an edge handle changes only that side (the cursor shows the direction).
+- [ ] **Shift+arrow** moves the selected box by one image pixel, **Ctrl+Shift+arrow** by ten; it stops at the image edge. Plain arrows still change image. A run of nudges is undone with one **Ctrl+Z**.
+- [ ] **Ctrl+Y** or **Ctrl+Shift+Z** (or **Redo**) redoes what was undone; clicking a box without moving it keeps the redo history; a new edit clears it.

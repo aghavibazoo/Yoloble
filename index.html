@@ -147,6 +147,7 @@
         <button class="btn btn-plain" id="resumeBtn" style="display:none" onclick="YOLOUI.resumeLastFolder()"></button>
         <button class="btn" onclick="YOLOUI.toggleClassEditor()" id="editClassesBtn">Edit Classes</button>
         <button class="btn" id="undoBtn" onclick="YOLOUI.undo()" disabled>Undo (Ctrl+Z)</button>
+        <button class="btn" id="redoBtn" onclick="YOLOUI.redo()" disabled title="Ctrl+Y or Ctrl+Shift+Z">Redo</button>
         <button class="btn" onclick="YOLOUI.downloadBundle()">Download Bundle</button>
         <button class="btn" onclick="YOLOUI.exportStats()" title="Export dataset statistics">Stats</button>
       </div>
@@ -662,7 +663,7 @@
     let imageMetadata=[], labels=[], boxes=[];
     let selectedBoxIndex=-1, currentImageIndex=0, currentClass=0;
     let showBoxes=true, isLoading=false, loadingCancelled=false;
-    const undoStacks=new Map(); // image name -> earlier states of its boxes
+    const undoStacks=new Map(), redoStacks=new Map(); // image name -> states of its boxes
 
     let statusMap=new Map(), hidePrevLabeled=false;
 
@@ -1384,7 +1385,7 @@
       showLoading('Analyzing Images...','Preparing image metadata...');
       if(!(await confirmLeaveCurrent())){ hideLoading(); return; }
       folder=null; session=null; round=null; resetSaveState(); statusMap=new Map(legacyStatus);
-      imageMetadata=[]; imageCache.clear(); undoStacks.clear(); boxesOwner=null; boxes=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false;
+      imageMetadata=[]; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); boxesOwner=null; boxes=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false;
       uploadedNames=files.map(f=>f.name);
       for(let i=0;i<files.length;i++){
         if(!updateLoading((i/files.length)*50,`Analyzing ${i+1}/${files.length}...`)) return;
@@ -1759,7 +1760,8 @@
         }
         if(sel){
           const hs=HANDLE_SIZE, hh=hs/2;
-          const corners=[{x:p1.x,y:p1.y},{x:p2.x,y:p1.y},{x:p1.x,y:p2.y},{x:p2.x,y:p2.y}];
+          const mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2;
+          const corners=[{x:p1.x,y:p1.y},{x:p2.x,y:p1.y},{x:p1.x,y:p2.y},{x:p2.x,y:p2.y},{x:mx,y:p1.y},{x:mx,y:p2.y},{x:p1.x,y:my},{x:p2.x,y:my}];
           corners.forEach(c=>{
             ctx.fillStyle='#fff'; ctx.fillRect(c.x-hh,c.y-hh,hs,hs);
             ctx.strokeStyle='#000'; ctx.lineWidth=1.5; ctx.setLineDash([]);
@@ -1771,9 +1773,42 @@
 
     // Undo history is kept per image, so undo never brings another image's boxes.
     const undoStackFor=name=>{ if(!undoStacks.has(name)) undoStacks.set(name,[]); return undoStacks.get(name); };
-    function updateUndoButton(){ $("undoBtn").disabled=!(boxesOwner!==null && undoStacks.get(boxesOwner)?.length); }
-    function saveState(){ if(boxesOwner===null) return; const st=undoStackFor(boxesOwner); st.push(JSON.parse(JSON.stringify(boxes))); if(st.length>MAX_UNDO) st.shift(); updateUndoButton(); }
-    function undo(){ const st=boxesOwner===null?null:undoStacks.get(boxesOwner); if(!st?.length) return; boxes=st.pop(); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); updateUndoButton(); commitEdit(); }
+    function updateUndoButton(){
+      $("undoBtn").disabled=!(boxesOwner!==null && undoStacks.get(boxesOwner)?.length);
+      $("redoBtn").disabled=!(boxesOwner!==null && redoStacks.get(boxesOwner)?.length);
+    }
+    const snapshotBoxes=()=>JSON.parse(JSON.stringify(boxes));
+    // Records the state before an edit; a new edit ends the redo history.
+    function pushUndo(state){
+      if(boxesOwner===null) return;
+      const st=undoStackFor(boxesOwner); st.push(state); if(st.length>MAX_UNDO) st.shift();
+      redoStacks.delete(boxesOwner); updateUndoButton();
+    }
+    function saveState(){ if(boxesOwner!==null) pushUndo(snapshotBoxes()); }
+    function undo(){
+      const st=boxesOwner===null?null:undoStacks.get(boxesOwner); if(!st?.length) return;
+      if(!redoStacks.has(boxesOwner)) redoStacks.set(boxesOwner,[]);
+      redoStacks.get(boxesOwner).push(snapshotBoxes());
+      boxes=st.pop(); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); updateUndoButton(); commitEdit();
+    }
+    function redo(){
+      const rs=boxesOwner===null?null:redoStacks.get(boxesOwner); if(!rs?.length) return;
+      undoStackFor(boxesOwner).push(snapshotBoxes());
+      boxes=rs.pop(); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); updateUndoButton(); commitEdit();
+    }
+    // Shift+arrow moves the selected box by one image pixel (Ctrl+Shift: ten).
+    // A run of nudges on one box is a single undo step.
+    let lastNudge={owner:null, box:-1, t:0};
+    function nudge(dx,dy){
+      if(selectedBoxIndex===-1 || !boxes[selectedBoxIndex]) return;
+      updateRenderState(); if(!RS.imgW) return;
+      const now=Date.now();
+      if(!(lastNudge.owner===boxesOwner && lastNudge.box===selectedBoxIndex && now-lastNudge.t<1500)) saveState();
+      lastNudge={owner:boxesOwner, box:selectedBoxIndex, t:now};
+      const b=YoloCore.confirmBox(boxes[selectedBoxIndex]);
+      boxes[selectedBoxIndex]=YoloCore.clampBox({...b, xc:b.xc+dx/RS.imgW, yc:b.yc+dy/RS.imgH},'shift') || b;
+      updateBoxList(); scheduleDraw(); commitEdit();
+    }
     function saveCurrentLabels(){ const i=boxesOwner===null ? -1 : indexOfName(boxesOwner); if(i>=0) labels[i]=[...boxes]; }
 
     function updateBoxList(){
@@ -1898,7 +1933,7 @@ Generated: ${new Date().toISOString()}`;
       showLoading('Loading Dataset...','Scanning structure...');
       await storageReady;
       folder=null; session=null; round=null; resetSaveState(); statusMap=new Map(legacyStatus);
-      imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear(); undoStacks.clear(); boxesOwner=null; boxes=[];
+      imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); boxesOwner=null; boxes=[];
       const loadWarnings=[];
       let statusEntries=new Map();
 
@@ -2053,6 +2088,11 @@ Generated: ${new Date().toISOString()}`;
       if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.type==='checkbox') return;
       if(modalOpen()){ if(e.key==='Escape') hideModal(); return; }
       if((e.ctrlKey||e.metaKey) && !e.shiftKey && (e.key==='z'||e.key==='Z')){ e.preventDefault(); undo(); return; }
+      if((e.ctrlKey||e.metaKey) && ((e.shiftKey && (e.key==='z'||e.key==='Z')) || e.key==='y'||e.key==='Y')){ e.preventDefault(); redo(); return; }
+      if(e.shiftKey && !e.altKey && e.key.startsWith('Arrow') && selectedBoxIndex!==-1){
+        e.preventDefault(); const s=e.ctrlKey?10:1;
+        nudge(e.key==='ArrowLeft'?-s:e.key==='ArrowRight'?s:0, e.key==='ArrowUp'?-s:e.key==='ArrowDown'?s:0); return;
+      }
       if(e.code==='Space' && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); if(!e.repeat) markReviewed(e.shiftKey); return; }
       if((e.key==='n'||e.key==='N') && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); markNoLabel(); return; }
       if(e.key==='Delete'||e.key==='Backspace'){ if(selectedBoxIndex!==-1){ saveState(); boxes.splice(selectedBoxIndex,1); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); commitEdit(); } }
@@ -2076,27 +2116,32 @@ Generated: ${new Date().toISOString()}`;
     function getResizeHandle(x,y,idx){
       if(idx===-1) return null;
       const b=normToImage(boxes[idx]);
-      const hs=[{x:b.x1,y:b.y1,h:'nw'},{x:b.x2,y:b.y1,h:'ne'},{x:b.x1,y:b.y2,h:'sw'},{x:b.x2,y:b.y2,h:'se'}];
+      const mx=(b.x1+b.x2)/2, my=(b.y1+b.y2)/2;
+      const hs=[{x:b.x1,y:b.y1,h:'nw'},{x:b.x2,y:b.y1,h:'ne'},{x:b.x1,y:b.y2,h:'sw'},{x:b.x2,y:b.y2,h:'se'},
+                {x:mx,y:b.y1,h:'n'},{x:mx,y:b.y2,h:'s'},{x:b.x1,y:my,h:'w'},{x:b.x2,y:my,h:'e'}];
       for(const h of hs){ const s=imageToScreen(h.x,h.y); if(Math.abs(x-s.x)<=HANDLE_SIZE && Math.abs(y-s.y)<=HANDLE_SIZE) return h.h }
       return null;
     }
+    const HANDLE_CURSOR={nw:'nwse-resize',se:'nwse-resize',ne:'nesw-resize',sw:'nesw-resize',n:'ns-resize',s:'ns-resize',e:'ew-resize',w:'ew-resize'};
+    let pendingUndo=null; // state before a mouse move/resize, recorded once the box really moves
     function onMouseDown(e){
       const p=getCanvasPos(e); isDragging=true; dragStart=p;
       if(e.button===2){ dragMode='pan'; canvas.style.cursor='grabbing'; return }
-      if(selectedBoxIndex!==-1){ const h=getResizeHandle(p.x,p.y,selectedBoxIndex); if(h){ saveState(); dragMode='resize'; resizeHandle=h; canvas.style.cursor='nw-resize'; return } }
-      const idx=getBoxAtPoint(p.x,p.y); if(idx!==-1){ saveState(); selectedBoxIndex=idx; dragMode='move'; canvas.style.cursor='move'; updateBoxList(); scheduleDraw(); return }
+      if(selectedBoxIndex!==-1){ const h=getResizeHandle(p.x,p.y,selectedBoxIndex); if(h){ pendingUndo=snapshotBoxes(); dragMode='resize'; resizeHandle=h; canvas.style.cursor=HANDLE_CURSOR[h]; return } }
+      const idx=getBoxAtPoint(p.x,p.y); if(idx!==-1){ pendingUndo=snapshotBoxes(); selectedBoxIndex=idx; dragMode='move'; canvas.style.cursor='move'; updateBoxList(); scheduleDraw(); return }
       selectedBoxIndex=-1; dragMode='create'; canvas.style.cursor='crosshair'; updateBoxList();
     }
     function onMouseMove(e){
       const p=getCanvasPos(e);
       if(!isDragging){
-        if(selectedBoxIndex!==-1){ const h=getResizeHandle(p.x,p.y,selectedBoxIndex); if(h){ canvas.style.cursor='nw-resize'; return } }
+        if(selectedBoxIndex!==-1){ const h=getResizeHandle(p.x,p.y,selectedBoxIndex); if(h){ canvas.style.cursor=HANDLE_CURSOR[h]; return } }
         const idx=getBoxAtPoint(p.x,p.y); canvas.style.cursor=idx!==-1?'move':'crosshair'; return;
       }
       const dx=p.x-dragStart.x, dy=p.y-dragStart.y;
+      if((dragMode==='move'||dragMode==='resize') && pendingUndo && (dx||dy)){ pushUndo(pendingUndo); pendingUndo=null; }
       if(dragMode==='pan'){ panX+=dx; panY+=dy; dragStart=p; scheduleDraw(); }
       else if(dragMode==='move' && selectedBoxIndex!==-1){
-        if(boxes[selectedBoxIndex].pre) boxes[selectedBoxIndex]=YoloCore.confirmBox(boxes[selectedBoxIndex]);
+        if(boxes[selectedBoxIndex].pre && (dx||dy)) boxes[selectedBoxIndex]=YoloCore.confirmBox(boxes[selectedBoxIndex]);
         const s=screenToImage(dragStart.x,dragStart.y), c=screenToImage(p.x,p.y);
         boxes[selectedBoxIndex].xc += (c.x-s.x)/RS.imgW;
         boxes[selectedBoxIndex].yc += (c.y-s.y)/RS.imgH;
@@ -2131,7 +2176,7 @@ Generated: ${new Date().toISOString()}`;
         if(k.x1<0||k.y1<0||k.x2>1||k.y2>1){ const nb=YoloCore.clampBox(YoloCore.confirmBox(b), dragMode==='move'?'shift':'clip'); if(nb) boxes[selectedBoxIndex]=nb; }
         updateBoxList(); commitEdit();
       }
-      isDragging=false; dragMode=null; resizeHandle=null; canvas.style.cursor='crosshair'; scheduleDraw();
+      isDragging=false; dragMode=null; resizeHandle=null; pendingUndo=null; canvas.style.cursor='crosshair'; scheduleDraw();
     }
     function onWheel(e){ e.preventDefault(); const p=getCanvasPos(e); zoomAt(p.x,p.y, e.deltaY>0?0.9:1.1); }
 
@@ -2143,7 +2188,7 @@ Generated: ${new Date().toISOString()}`;
       applyFilters, clearFilters, rebuildDatabase, toggleHidePrevLabeled,
       previousImage, nextImage, goToImage,
       zoomIn, zoomOut, fitToScreen, resetZoom, toggleBoxes,
-      undo,
+      undo, redo,
       exportStats: ()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buildStatsText()],{type:'text/plain'})); a.download='dataset_statistics.txt'; a.click(); },
       downloadBundle,
       showDetailedDebug, deleteCurrentImage,
