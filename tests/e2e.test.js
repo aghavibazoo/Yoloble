@@ -461,6 +461,48 @@ test('finer editing: edge handles, Shift+arrow nudge as one undo step, redo', { 
   await settle(b);
 }));
 
+test('thumbnail strip: status colours, filters by status, problems, reason and class, click to open', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  const strip = () => b.evaluate(`({ count: document.getElementById('stripCount').textContent,
+    names: [...document.querySelectorAll('#stripThumbs .thumb')].map(t => t.dataset.name),
+    classes: [...document.querySelectorAll('#stripThumbs .thumb')].map(t => t.className) })`);
+  const setFilter = (id, v) => b.evaluate(`(() => { const s = document.getElementById('${id}'); s.value = '${v}'; s.dispatchEvent(new Event('change')); })()`);
+  await b.evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
+  let s = await strip();
+  assert.equal(s.count, '12 of 12 shown');
+  assert.match(s.classes[0], /current/);
+  assert.match(s.classes[1], /st-unlabeled/, 'the empty frame has no boxes');
+  assert.match(s.classes[0], /st-labeled/);
+  assert.match(s.classes[5], /issue/, 'duplicate pre-label');
+  await b.key(' ');
+  await b.waitFor('YOLOUI._snapshot().index === 1 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await b.evaluate('new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))');
+  s = await strip();
+  assert.match(s.classes[0], /st-reviewed/);
+  assert.match(s.classes[1], /current/);
+
+  await setFilter('stripStatus', 'todo');
+  assert.equal((await strip()).count, '11 of 12 shown');
+  await setFilter('stripStatus', 'issues');
+  assert.deepEqual((await strip()).names, ['clark_ave_01__e5f60718__f014209.jpg', 'hwy7_east__0badc0de__f015197.jpg']);
+  await setFilter('stripStatus', '');
+  await setFilter('stripReason', 'rare_class');
+  assert.deepEqual((await strip()).names, ['clark_ave_01__a1b2c3d4__f006138.jpg']);
+  await setFilter('stripReason', '');
+  await setFilter('stripClass', '8');
+  const withBus = (await strip()).names;
+  assert.ok(withBus.includes('clark_ave_01__a1b2c3d4__f006138.jpg'));
+  // Clicking a thumbnail opens that image.
+  await b.evaluate(`document.querySelector('#stripThumbs .thumb:last-child').click()`);
+  await b.waitFor(`YOLOUI._snapshot().name === ${JSON.stringify(withBus.at(-1))} && YOLOUI._snapshot().owner === YOLOUI._snapshot().name`);
+  // T hides and shows the thumbnails.
+  await b.key('t');
+  assert.equal(await b.evaluate(`document.getElementById('strip').classList.contains('hidden')`), true);
+  await b.key('t');
+  assert.equal(await b.evaluate(`document.getElementById('strip').classList.contains('hidden')`), false);
+}));
+
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._loadReadOnlyForTests(await r.getDirectoryHandle('round')); })()`);

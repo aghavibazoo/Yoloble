@@ -109,3 +109,9 @@ Tick each line. Each line was added with the change it covers.
 - [ ] A selected box has handles on all four corners and all four edges; dragging an edge handle changes only that side (the cursor shows the direction).
 - [ ] **Shift+arrow** moves the selected box by one image pixel, **Ctrl+Shift+arrow** by ten; it stops at the image edge. Plain arrows still change image. A run of nudges is undone with one **Ctrl+Z**.
 - [ ] **Ctrl+Y** or **Ctrl+Shift+Z** (or **Redo**) redoes what was undone; clicking a box without moving it keeps the redo history; a new edit clears it.
+
+### Thumbnail strip
+
+- [ ] Below the image, a strip shows every image with its number: green border and ✓ when reviewed, amber when it has unchecked boxes, grey when it has none; a red **!** when Checks finds a problem; the current image is outlined and stays in view while you move.
+- [ ] Filters: **Not reviewed**, **Reviewed**, **With problems** (sample: the duplicate and the near-zero box images), a reason (only for rounds), a class. The count shows how many are shown. Clicking a thumbnail opens that image.
+- [ ] **T** (or **Thumbnails**) hides and shows the strip; the canvas grows to fill the space; the choice is remembered.

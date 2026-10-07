@@ -18,8 +18,22 @@
     .btn-plain{background:#444}
     .info{display:flex;gap:20px;align-items:center;font-size:14px}
     .main-container{display:flex;flex:1;min-height:0}
-    .canvas-container{flex:1;position:relative;background:#0a0a0a;overflow:hidden}
-    #canvas{display:block;width:100%;height:100%;cursor:crosshair}
+    .canvas-container{flex:1;position:relative;background:#0a0a0a;overflow:hidden;display:flex;flex-direction:column;min-width:0}
+    #canvas{display:block;width:100%;flex:1 1 auto;height:0;min-height:0;cursor:crosshair}
+    .strip{flex:none;background:#202020;border-top:2px solid #333;display:flex;flex-direction:column}
+    .strip.hidden .strip-thumbs{display:none}
+    .strip-bar{display:flex;gap:8px;align-items:center;padding:4px 10px;font-size:12px;color:#ccc;flex-wrap:wrap}
+    .strip-bar select{background:#3a3a3a;color:#fff;border:1px solid #555;border-radius:3px;padding:2px 4px;font-size:12px}
+    .strip-bar .grow{flex:1}
+    .strip-bar button{background:#3a3a3a;color:#fff;border:1px solid #555;border-radius:3px;padding:2px 8px;font-size:12px;cursor:pointer}
+    .strip-thumbs{display:flex;gap:6px;overflow-x:auto;overflow-y:hidden;padding:4px 10px 8px;height:96px;align-items:flex-start}
+    .thumb{position:relative;flex:none;width:120px;height:68px;border:3px solid #555;border-radius:4px;cursor:pointer;background:#111}
+    .thumb canvas{width:100%;height:100%;display:block;border-radius:2px}
+    .thumb.st-reviewed{border-color:#2ecc71}.thumb.st-labeled{border-color:#d4a017}.thumb.st-unlabeled{border-color:#777}
+    .thumb.current{outline:2px solid #fff;outline-offset:2px}
+    .thumb .idx{position:absolute;left:3px;bottom:2px;font-size:10px;background:rgba(0,0,0,.7);padding:0 4px;border-radius:3px}
+    .thumb .tick{position:absolute;right:3px;bottom:2px;font-size:11px;color:#2ecc71;background:rgba(0,0,0,.7);padding:0 3px;border-radius:3px}
+    .thumb.issue::after{content:'!';position:absolute;right:3px;top:2px;width:14px;height:14px;border-radius:50%;background:#e74c3c;color:#fff;font-size:10px;font-weight:700;text-align:center;line-height:14px}
     .sidebar{width:350px;background:#2d2d2d;border-left:2px solid #333;padding:20px;overflow-y:auto}
     .section{margin-bottom:25px}
     .section h3{margin-bottom:10px;color:#4a90e2;font-size:16px}
@@ -204,6 +218,19 @@
         <div class="class-list-pick" id="classPickerList"></div>
       </div>
       <button class="sidebar-toggle" id="sidebarToggle" onclick="YOLOUI.toggleSidebar()" title="Toggle sidebar">◀</button>
+      <div class="strip" id="strip">
+        <div class="strip-bar">
+          <button id="stripToggle" onclick="YOLOUI.toggleStrip()" title="Show or hide the thumbnails (T)">Thumbnails ▾</button>
+          <select id="stripStatus" title="Filter by review status">
+            <option value="">All images</option><option value="todo">Not reviewed</option><option value="reviewed">Reviewed</option><option value="issues">With problems</option>
+          </select>
+          <select id="stripReason" title="Filter by why the frame was selected"></select>
+          <select id="stripClass" title="Filter by class"></select>
+          <span class="grow"></span>
+          <span id="stripCount"></span>
+        </div>
+        <div class="strip-thumbs" id="stripThumbs"></div>
+      </div>
     </div>
 
     <div class="sidebar" id="sidebar">
@@ -1035,6 +1062,7 @@
         scheduleDraw();
       };
       resize(); window.addEventListener('resize',resize);
+      if(typeof ResizeObserver==='function') new ResizeObserver(resize).observe(canvas);
     }
 
     function updateRenderState(){
@@ -1242,6 +1270,7 @@
     }
 
     function buildLabelDatabase(){
+      thumbs.clear(); if($("stripThumbs")) $("stripThumbs").innerHTML=''; stripFilterOptions();
       labelDatabase.imageIndex=[]; labelDatabase.classIndex={}; labelDatabase.statusIndex.labeled.clear(); labelDatabase.statusIndex.unlabeled.clear();
       CLASS_NAMES.forEach((_,id)=> labelDatabase.classIndex[id]=new Set());
       for(let i=0;i<imageMetadata.length;i++){
@@ -1700,6 +1729,97 @@
       return {errors, warnings};
     }
 
+    // ----- thumbnail strip -----
+    const thumbs=new Map();          // image name -> element
+    const thumbBitmaps=new Map();    // image name -> ImageBitmap (LRU, at most THUMB_CACHE)
+    const THUMB_CACHE=400;
+    let thumbObserver=null, stripPending=false;
+    let showStrip=true; try{ showStrip=localStorage.getItem('yoloble_show_strip')!=='0'; }catch{}
+    function toggleStrip(force){
+      showStrip = typeof force==='boolean' ? force : !showStrip;
+      try{ localStorage.setItem('yoloble_show_strip', showStrip?'1':'0'); }catch{}
+      $("strip").classList.toggle('hidden',!showStrip); $("stripToggle").textContent=showStrip?'Thumbnails ▾':'Thumbnails ▸';
+      if(showStrip) renderStrip();
+    }
+    function stripFilterOptions(){
+      const rs=$("stripReason"), cs=$("stripClass"), rv=rs.value, cv=cs.value;
+      const reasons=round ? [...new Set([...round.images.values()].map(e=>e.reason).filter(Boolean))].sort() : [];
+      rs.innerHTML='<option value="">All reasons</option>'+reasons.map(r=>`<option value="${escapeHtml(r)}">${escapeHtml(REASON_LABELS[r]||r)}</option>`).join('');
+      rs.style.display=reasons.length?'':'none'; rs.value=reasons.includes(rv)?rv:'';
+      cs.innerHTML='<option value="">Any class</option>'+CLASS_NAMES.map((n,i)=>`<option value="${i}">${i}: ${escapeHtml(n)}</option>`).join('');
+      cs.value=cv!=='' && +cv<CLASS_NAMES.length ? cv : '';
+    }
+    function stripMatches(i){
+      const m=imageMetadata[i], st=statusOfName(m.name), f=$("stripStatus").value, r=$("stripReason").value, c=$("stripClass").value;
+      if(f==='todo' && YoloCore.isDecided(st)) return false;
+      if(f==='reviewed' && st!=='reviewed') return false;
+      if(f==='issues' && !imageIssues(i).length) return false;
+      if(r && round?.images.get(m.name)?.reason!==r) return false;
+      if(c!=='' && !(m.name===boxesOwner?boxes:(labels[i]||[])).some(b=>b.cls===+c)) return false;
+      return true;
+    }
+    function renderStrip(){
+      const box=$("stripThumbs"); if(!box) return;
+      thumbObserver?.disconnect(); thumbs.clear(); box.innerHTML='';
+      if(!showStrip || !imageMetadata.length){ $("stripCount").textContent=''; return; }
+      if(!thumbObserver && typeof IntersectionObserver==='function')
+        thumbObserver=new IntersectionObserver(es=>es.forEach(e=>{ if(e.isIntersecting) drawThumb(e.target); }),{root:box, rootMargin:'0px 300px'});
+      let shown=0;
+      imageMetadata.forEach((m,i)=>{
+        if(!stripMatches(i)) return;
+        shown++;
+        const el=document.createElement('div'); el.className='thumb'; el.dataset.name=m.name;
+        const cv=document.createElement('canvas'); cv.width=120; cv.height=68;
+        const idx=document.createElement('span'); idx.className='idx'; idx.textContent=i+1;
+        el.append(cv,idx); el.onclick=()=>gotoName(m.name);
+        box.appendChild(el); thumbs.set(m.name,el); thumbObserver?.observe(el);
+      });
+      $("stripCount").textContent=`${shown} of ${imageMetadata.length} shown`;
+      updateStripMarks(true);
+      thumbs.get(boxesOwner)?.scrollIntoView({block:'nearest',inline:'nearest'});
+    }
+    // all=false re-checks problems only for the current image (cheap on large sets).
+    function updateStripMarks(all=false){
+      thumbs.forEach((el,name)=>{
+        const i=indexOfName(name), st=statusOfName(name);
+        el.classList.remove('st-reviewed','st-labeled','st-unlabeled');
+        el.classList.add(st==='reviewed'?'st-reviewed':st==='labeled'?'st-labeled':'st-unlabeled');
+        el.classList.toggle('current', name===boxesOwner);
+        if(all || name===boxesOwner || el.dataset.lastOwner) el.classList.toggle('issue', i>=0 && imageIssues(i).length>0);
+        if(name===boxesOwner) el.dataset.lastOwner='1'; else delete el.dataset.lastOwner;
+        const r=round?.images.get(name);
+        el.title=`${i+1}. ${name}\n${st==='reviewed'?'Reviewed':'Not reviewed'}${r?.reasonText?` · ${r.reasonText}`:''}`;
+        let tick=el.querySelector('.tick');
+        if(st==='reviewed' && !tick){ tick=document.createElement('span'); tick.className='tick'; tick.textContent='✓'; el.appendChild(tick); }
+        else if(st!=='reviewed' && tick) tick.remove();
+      });
+    }
+    // Refreshes the strip after a change: rebuilds it when a filter could now
+    // include or exclude images, otherwise only updates the marks.
+    function scheduleStrip(){
+      if(stripPending || !showStrip) return; stripPending=true;
+      requestAnimationFrame(()=>{
+        stripPending=false;
+        const filtered=$("stripStatus").value || $("stripReason").value || $("stripClass").value!=='';
+        if(filtered || thumbs.size===0 && imageMetadata.length) renderStrip();
+        else { updateStripMarks(); thumbs.get(boxesOwner)?.scrollIntoView({block:'nearest',inline:'nearest'}); }
+      });
+    }
+    async function drawThumb(el){
+      const name=el.dataset.name, cv=el.querySelector('canvas'); if(el.dataset.drawn) return;
+      el.dataset.drawn='1';
+      try{
+        let bmp=thumbBitmaps.get(name);
+        if(!bmp){
+          const m=imageMetadata[indexOfName(name)]; if(!m) return;
+          bmp=await createImageBitmap(m.file,{resizeWidth:120, resizeHeight:68, resizeQuality:'low'});
+          thumbBitmaps.set(name,bmp);
+          if(thumbBitmaps.size>THUMB_CACHE){ const [k,v]=thumbBitmaps.entries().next().value; v.close?.(); thumbBitmaps.delete(k); }
+        }
+        cv.getContext('2d').drawImage(bmp,0,0,120,68);
+      }catch{ delete el.dataset.drawn; }
+    }
+
     // ----- small UI helpers -----
     let toastTimer=null;
     function showToast(msg,ms=4000){ const t=$("toast"); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),ms); }
@@ -1869,7 +1989,7 @@ Generated: ${new Date().toISOString()}`;
       } else {
         const pos=valid.indexOf(currentImageIndex); prev.disabled=pos<=0; next.disabled=pos>=valid.length-1; prev.textContent='◀ Prev (A)'; next.textContent='Next (D) ▶';
       }
-      page.max=valid.length; updateZoomLevel(); updateFilterStats(); updateReviewUI();
+      page.max=valid.length; updateZoomLevel(); updateFilterStats(); updateReviewUI(); scheduleStrip();
     }
 
     function showDetailedDebug(){
@@ -2056,6 +2176,8 @@ Generated: ${new Date().toISOString()}`;
     function init(){
       storageReady=initStorage();
       setupCanvas(); setupClassSelector(); setupEventListeners(); setupClassFilterGrid(); setupClassPicker();
+      ['stripStatus','stripReason','stripClass'].forEach(id=>$(id).addEventListener('change',renderStrip));
+      stripFilterOptions(); toggleStrip(showStrip);
       $("showClassNames").checked=showClassNames;
       updateUI(); updateDatabaseStatus();
       setInterval(cleanupMemory,30000);
@@ -2102,6 +2224,7 @@ Generated: ${new Date().toISOString()}`;
       else if((e.key==='c'||e.key==='C') && !e.ctrlKey && !e.metaKey){ e.preventDefault(); openClassPicker(); }
       else if((e.key==='l'||e.key==='L') && !e.ctrlKey && !e.metaKey){ toggleClassNames(); }
       else if((e.key==='u'||e.key==='U') && !e.ctrlKey && !e.metaKey){ jumpToUncertain(e.shiftKey); }
+      else if((e.key==='t'||e.key==='T') && !e.ctrlKey && !e.metaKey){ toggleStrip(); }
       else if(e.key==='Escape'){ if(selectedBoxIndex!==-1){ selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); } }
       else if(e.key==='Tab'){ e.preventDefault(); currentClass = e.shiftKey ? (currentClass-1+CLASS_NAMES.length)%CLASS_NAMES.length : (currentClass+1)%CLASS_NAMES.length; setCurrentClass(currentClass); }
       else if(e.key==='v'||e.key==='V'){ toggleBoxes(); }
@@ -2194,7 +2317,7 @@ Generated: ${new Date().toISOString()}`;
       showDetailedDebug, deleteCurrentImage,
       chooseFolder, grantWriteAccess, retrySave, resumeLastFolder, hideNotice,
       openClassPicker, toggleClassNames: ()=>toggleClassNames(), _renderClassList: renderClassList,
-      markReviewed, nextUnreviewed, finishRound, jumpToUncertain: ()=>jumpToUncertain(),
+      markReviewed, nextUnreviewed, finishRound, jumpToUncertain: ()=>jumpToUncertain(), toggleStrip: ()=>toggleStrip(),
       cancelLoading,
       // For the automated tests (tests/e2e.test.js); not used by the page.
       _openFolder: openFolder, _round: ()=>round && {roundId:round.roundId, modelId:round.modelId, classes:round.classes, images:round.images.size}, _flushSaves: ()=>flushSaves(), _saveSession: ()=>saveSessionNow(), _storageReady: ()=>storageReady,
