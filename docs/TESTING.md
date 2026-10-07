@@ -93,3 +93,9 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Edit a label file in Notepad so a box sticks out of the image (e.g. x centre 0.99, width 0.1) and reopen: Checks offers **Clip to image**. A line like `3 0.5 oops 0.1 0.1` gives a warning on opening and *unreadable line* in Checks; moving to another image leaves the file alone; **Rewrite file** removes the line.
 - [ ] Change `Van` to `van` in `classes.txt` and reopen: **Finish round** lists *classes.txt line 3 is "van", round.json has "Van"*. An extra image copied into `Images/` is listed as *not listed in round.json*. Problems are listed per image; clicking a name opens it.
 - [ ] Optional cross-check against irs itself: after a session, run irs's `check_label_bytes` (irs/dataset/labels.py) on every `Labels/*.txt` of non-deleted images: no issues.
+
+### Acceptance (design section 12)
+
+- [ ] Automated: `node --test tests/acceptance.test.js` generates a 50-frame round, reviews it (edits, reclassifications, deletions, empty frames, fixes), kills the browser after 25 frames, resumes with **Resume**, finishes, and checks the folder field by field against `docs/round_format.md`. `KEEP_ROUND=1` keeps the finished folder and prints its path.
+- [ ] Manual, 50 frames: `python tools/make_sample_round.py --frames 50 --out %TEMP%\round_050`, open it with **Choose Folder** and review every frame without using **Download Bundle**. Halfway, end Chrome in Task Manager; reopen `index.html`, click **Resume "round_050"**: same image, nothing lost. Finish: **Finish round** says the round is ready.
+- [ ] **irs ingest accepts the folder.** Run `irs ingest --round N` on the finished folder (once ingest exists), or meanwhile, from the irs repository: `python <Yoloble>/tests/irs_check_round.py <round folder>`, which reads the folder as `round_format.md` describes and checks every label file with irs's own `check_label_bytes`: it reports 0 problems.
