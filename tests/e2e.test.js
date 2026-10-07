@@ -194,4 +194,124 @@ test('a failed write shows the error banner, keeps the change and succeeds on re
   assert.equal(disk[`Labels/${IMG0}.txt`].toString().trim().split('\n').length, 4);
 }));
 
+const IMG3 = 'clark_ave_01__a1b2c3d4__f023836';
+
+test('a crash mid-round loses nothing: reopening resumes on the same image and restores unsaved edits', { skip }, async () => {
+  const os = require('node:os');
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'yoloble-crash-'));
+  // Session 1: one edit reaches the folder, then writes start failing and a
+  // second edit only exists in the browser when the browser dies.
+  let b = await launch({ userDataDir: profile });
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+  await b.evaluate('YOLOUI._storageReady()');
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await settle(b);
+  for (let i = 0; i < 3; i++) await b.key('d');
+  await b.waitFor(`YOLOUI._snapshot().name === '${IMG3}.jpg'`);
+  await b.evaluate(`FileSystemFileHandle.prototype.createWritable = function () { return Promise.reject(new DOMException('simulated', 'InvalidStateError')); };`);
+  await drag(b, { x: 0.05, y: 0.05 }, { x: 0.15, y: 0.12 });
+  await b.waitFor('YOLOUI._snapshot().saveError !== null');
+  await b.evaluate('YOLOUI._saveSession()');
+  await b.kill();
+
+  // Session 2: same profile, same folder.
+  b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    await b.evaluate('YOLOUI._storageReady()');
+    assert.match(await b.evaluate(`document.getElementById('resumeBtn').textContent`), /Resume "round"/);
+    let disk = await getFolder(b, 'round');
+    assert.equal(lineCount(disk[`Labels/${IMG0}.txt`]), 4, 'first edit was saved before the crash');
+    const before = disk[`Labels/${IMG3}.txt`].toString();
+    await b.evaluate('YOLOUI.resumeLastFolder()');
+    await b.waitFor(`getComputedStyle(document.getElementById('loadingOverlay')).display === 'none' && YOLOUI._snapshot().count > 0`);
+    assert.equal(b.dialogs.length, 1);
+    assert.match(b.dialogs[0], /kept 1 label edit for "round" that never reached the folder/);
+    const s = await snap(b);
+    assert.equal(s.name, IMG3 + '.jpg', 'resumes on the image it was on');
+    await settle(b);
+    disk = await getFolder(b, 'round');
+    const after = disk[`Labels/${IMG3}.txt`].toString();
+    assert.equal(lineCount(after), lineCount(before) + 1, 'unsaved edit restored and saved');
+    assert.match(after.split('\n').at(-2), /^0 0\.100000 0\.08\d{4} 0\.100000 0\.0[67]\d{4}$/);
+    assert.deepEqual(b.consoleLog.filter(l => l.startsWith('EXCEPTION')), []);
+  } finally { await b.close(); }
+});
+
+test('a status change that never reached the folder is restored too', { skip }, async () => {
+  const os = require('node:os');
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'yoloble-status-'));
+  let b = await launch({ userDataDir: profile });
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await b.evaluate(`FileSystemFileHandle.prototype.createWritable = function () { return Promise.reject(new DOMException('simulated', 'InvalidStateError')); };`);
+  await b.evaluate('YOLOUI.deleteCurrentImage()');
+  await b.waitFor('YOLOUI._snapshot().saveError !== null');
+  await b.evaluate('YOLOUI._saveSession()');
+  await b.kill();
+  b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    await openRound(b);
+    assert.match(b.dialogs[0], /kept 1 status change/);
+    assert.equal((await snap(b)).count, 11);
+    await settle(b);
+    const status = JSON.parse((await getFolder(b, 'round'))['image_status.json'].toString());
+    assert.equal(status.find(r => r.name === IMG0 + '.jpg').status, 'deleted');
+  } finally { await b.close(); }
+});
+
+test('a full browser store does not stop saving to the folder', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await b.evaluate(`IDBObjectStore.prototype.put = function () { throw new DOMException('quota (simulated)', 'QuotaExceededError'); };`);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await settle(b);
+  await b.waitFor(`document.getElementById('noticeBanner').classList.contains('show')`);
+  assert.match(await b.evaluate(`document.getElementById('noticeBannerMsg').textContent`), /Backup in the browser failed \(quota \(simulated\)\)\. Changes are still being saved to the folder/);
+  assert.match((await snap(b)).saveState, /All changes saved/);
+  assert.equal(lineCount((await getFolder(b, 'round'))[`Labels/${IMG0}.txt`]), 4);
+}));
+
+test('declining recovery discards the kept edits and does not ask again', { skip }, async () => {
+  const os = require('node:os');
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'yoloble-discard-'));
+  let b = await launch({ userDataDir: profile });
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await b.evaluate(`FileSystemFileHandle.prototype.createWritable = function () { return Promise.reject(new DOMException('simulated', 'InvalidStateError')); };`);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await b.waitFor('YOLOUI._snapshot().saveError !== null');
+  await b.evaluate('YOLOUI._saveSession()');
+  await b.kill();
+  b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    b.setDialogAccept(false);
+    await openRound(b);
+    assert.equal(b.dialogs.length, 1);
+    assert.equal((await snap(b)).boxes.length, 3, 'kept edit discarded');
+    b.setDialogAccept(true);
+    await openRound(b);
+    assert.equal(b.dialogs.length, 1, 'not offered a second time');
+  } finally { await b.close(); }
+});
+
+test('statuses kept in localStorage by older versions are moved to IndexedDB once', { skip }, () => withBrowser(async b => {
+  await b.evaluate(`localStorage.setItem('yolo_image_status', JSON.stringify([{name:'${IMG0}.JPG', status:'deleted'}]))`);
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+  await b.evaluate('YOLOUI._storageReady()');
+  assert.equal(await b.evaluate(`localStorage.getItem('yolo_image_status')`), null);
+  const files = ORIGINAL(); delete files['image_status.json'];
+  await putFolder(b, 'legacy', files);
+  await openRound(b, 'legacy');
+  const s = await snap(b);
+  assert.equal(s.count, 11, 'image deleted in the old status list stays hidden');
+  assert.equal(s.status[`${IMG0}.jpg`.toLowerCase()], 'deleted');
+}));
+
 module.exports = { putFolder, getFolder, openRound, snap, settle, drag, withBrowser, sampleFiles };

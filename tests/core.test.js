@@ -68,3 +68,38 @@ test('serializeStatusJson writes one sorted entry per name', () => {
     { name: 'a.jpg', status: 'deleted' }, { name: 'b.jpg', status: 'reviewed' }, { name: 'c.jpg', status: 'unlabeled' }]);
   assert.ok(text.endsWith(']\n'));
 });
+
+test('canonicalLabelText ignores formatting but keeps files with bad lines as they are', () => {
+  assert.equal(C.canonicalLabelText(null), null);
+  assert.equal(C.canonicalLabelText('0 0.5 0.5 0.1 0.1'), '0 0.500000 0.500000 0.100000 0.100000\n');
+  assert.equal(C.canonicalLabelText(''), '');
+  assert.equal(C.canonicalLabelText('0 0.5 0.5 0.1\n'), '0 0.5 0.5 0.1\n');
+});
+
+test('planRecovery restores only changes the folder never received', () => {
+  const session = {
+    labels: {
+      saved: { text: 'A', base: 'old' },        // the folder already has it
+      lost: { text: 'B', base: 'old' },         // the folder still has the base: restore
+      lostNew: { text: 'C', base: null },       // file never existed: restore
+      moved: { text: 'D', base: 'old' },        // folder changed since: conflict
+    },
+    statuses: { a: 'reviewed', b: 'reviewed', c: 'labeled', d: 'deleted', e: 'reviewed', f: 'reviewed' },
+    statusBase: { a: 'unlabeled', b: 'unlabeled', c: 'unlabeled', d: 'unlabeled', e: 'labeled', f: 'unlabeled' },
+  };
+  const diskLabels = { saved: 'A', lost: 'old', lostNew: null, moved: 'other' };
+  const diskStatus = { a: 'reviewed', b: 'unlabeled', c: 'unlabeled', d: 'unlabeled', e: 'unlabeled', f: 'deleted' };
+  const plan = C.planRecovery(session, { labelText: n => diskLabels[n], status: n => diskStatus[n] });
+  assert.deepEqual(plan.labels, [{ name: 'lost', text: 'B' }, { name: 'lostNew', text: 'C' }]);
+  // c only differs by the automatic labeled/unlabeled status: not worth offering.
+  // e: the folder moved between the two not-reviewed statuses, so the review is restored.
+  // f: the folder marked the image deleted meanwhile: conflict, the folder wins.
+  assert.deepEqual(plan.statuses, [{ name: 'b', status: 'reviewed' }, { name: 'd', status: 'deleted' }, { name: 'e', status: 'reviewed' }]);
+  assert.deepEqual(plan.conflicts, ['moved', 'f']);
+});
+
+test('planRecovery with no session or nothing lost is empty', () => {
+  const disk = { labelText: () => null, status: () => null };
+  assert.deepEqual(C.planRecovery(null, disk), { labels: [], statuses: [], conflicts: [] });
+  assert.deepEqual(C.planRecovery({ labels: {}, statuses: {} }, disk), { labels: [], statuses: [], conflicts: [] });
+});

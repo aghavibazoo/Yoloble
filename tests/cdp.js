@@ -43,11 +43,11 @@ async function launch({ userDataDir, port = 9300 + Math.floor(Math.random() * 50
     else if (msg.method) listeners.forEach(l => l(msg));
   };
   const send = (method, params = {}) => new Promise((res, rej) => { const i = ++id; pending.set(i, { res, rej }); ws.send(JSON.stringify({ id: i, method, params })); });
-  const consoleLog = [];
+  const consoleLog = [], dialogs = []; let dialogAccept = true;
   listeners.push(m => {
     if (m.method === 'Runtime.consoleAPICalled') consoleLog.push(m.params.args.map(a => a.value ?? a.description).join(' '));
     if (m.method === 'Runtime.exceptionThrown') consoleLog.push('EXCEPTION ' + (m.params.exceptionDetails.exception?.description || m.params.exceptionDetails.text));
-    if (m.method === 'Page.javascriptDialogOpening') send('Page.handleJavaScriptDialog', { accept: true }).catch(() => {});
+    if (m.method === 'Page.javascriptDialogOpening') { dialogs.push(m.params.message); send('Page.handleJavaScriptDialog', { accept: dialogAccept }).catch(() => {}); }
   });
   await send('Runtime.enable'); await send('Page.enable');
   async function evaluate(expr) {
@@ -78,11 +78,18 @@ async function launch({ userDataDir, port = 9300 + Math.floor(Math.random() * 50
     const r = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(file, Buffer.from(r.data, 'base64'));
   }
+  // Simulates a crash: the browser process is killed without shutting down.
+  async function kill() {
+    try { ws.close(); } catch {}
+    proc.kill('SIGKILL');
+    await new Promise(r => { if (proc.exitCode !== null) return r(); proc.on('exit', r); setTimeout(r, 5000); });
+    await sleep(1500); // let child processes release the profile
+  }
   async function close() {
     try { await send('Browser.close'); } catch {}
     await new Promise(r => { if (proc.exitCode !== null) return r(); proc.on('exit', r); setTimeout(r, 5000); });
   }
-  return { send, evaluate, goto, waitFor, key, mouse, screenshot, close, consoleLog, userDataDir: dir };
+  return { send, evaluate, goto, waitFor, key, mouse, screenshot, close, kill, consoleLog, dialogs, setDialogAccept: v => { dialogAccept = v; }, userDataDir: dir };
 }
 
 module.exports = { launch, findChrome, sleep };

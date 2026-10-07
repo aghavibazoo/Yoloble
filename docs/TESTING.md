@@ -38,3 +38,13 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Set `Labels\<current image>.txt` to read-only (Properties > Read-only), then edit that image. A red banner shows the error and the header shows **Save failed (1 unsaved)**; it retries every 5 s. Clear the read-only flag: the banner goes away by itself (or press **Retry now**) and the file holds the edit.
 - [ ] With an unsaved change (during the read-only test above), closing the tab makes the browser ask before leaving.
 - [ ] After a session, `dir /S /O:D /T:W` on the round folder: only files in `Labels\` and `image_status.json` have new times; nothing new appears in the folder (no temporary files left behind), `Images\`, `round.json` and `classes.txt` are untouched.
+
+### Autosave and recovery
+
+- [ ] **Close the browser mid-round, reopen, nothing lost.** Review a few images, edit one, then end Chrome in Task Manager (a crash, not a normal close). Open `index.html` again: the header shows **Resume "round_test"**. Click it: Yoloble opens the folder on the image you were on, every edit is there, and the header shows **All changes saved**.
+- [ ] Make `Labels\<image>.txt` read-only, edit that image (header: **Save failed**), close the browser and accept leaving. Clear the read-only flag and reopen the folder: a dialog names the image and offers to restore the unsaved edit. **OK** restores it and writes it into the folder.
+- [ ] Repeat, but press **Cancel** in that dialog: the edit is discarded, the folder keeps its version, and reopening the folder does not ask again.
+- [ ] Change a label file in Notepad while Yoloble is closed, after Yoloble had an unsaved edit for it: on reopening, the folder's version is kept and a banner says one image was changed outside Yoloble.
+- [ ] Older state: in DevTools > Application > Local Storage, add key `yolo_image_status` with `[{"name":"<an image>.jpg","status":"deleted"}]` and reload. The key is gone, IndexedDB `yoloble` > `meta` has `legacyStatus`, and opening a folder without `image_status.json` hides that image as before.
+- [ ] Drag images and their label files in together, edit, reload the page and drag the same files in: Yoloble offers the edits back.
+- [ ] In DevTools > Application > IndexedDB, delete database `yoloble` while Yoloble is open, then edit: a yellow banner says the browser backup failed, and saving to the folder carries on.

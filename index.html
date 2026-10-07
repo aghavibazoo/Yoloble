@@ -101,6 +101,7 @@
     <div class="controls-row">
       <div class="left-controls">
         <button class="btn" onclick="YOLOUI.chooseFolder()">Choose Folder</button>
+        <button class="btn btn-plain" id="resumeBtn" style="display:none" onclick="YOLOUI.resumeLastFolder()"></button>
         <button class="btn" onclick="YOLOUI.toggleClassEditor()" id="editClassesBtn">Edit Classes</button>
         <button class="btn" id="undoBtn" onclick="YOLOUI.undo()" disabled>Undo (Ctrl+Z)</button>
         <button class="btn" onclick="YOLOUI.downloadBundle()">Download Bundle</button>
@@ -129,6 +130,11 @@
     <button id="saveBannerGrant" onclick="YOLOUI.grantWriteAccess()">Allow saving to folder</button>
     <button id="saveBannerRetry" onclick="YOLOUI.retrySave()">Retry now</button>
     <button onclick="YOLOUI.downloadBundle()">Download Bundle (ZIP)</button>
+  </div>
+
+  <div id="noticeBanner" class="banner warn" role="status">
+    <span class="msg" id="noticeBannerMsg"></span>
+    <button onclick="YOLOUI.hideNotice()">Dismiss</button>
   </div>
 
   <div class="main-container">
@@ -335,8 +341,40 @@
       return JSON.stringify(rows,null,2)+'\n';
     }
 
+    // A label file's text in the form Yoloble writes it, so that formatting
+    // differences do not count as changes. A file with unreadable lines keeps
+    // its raw text; null means there is no file.
+    function canonicalLabelText(text){
+      if(text===null || text===undefined) return null;
+      const p=parseLabelText(text);
+      return p.bad.length ? String(text) : serializeLabels(p.boxes);
+    }
+
+    // After a crash or a closed tab: which changes kept in the browser session
+    // never reached the folder? A change is restored only when the folder still
+    // holds what it held when the change was made ("base"); if the folder has
+    // moved on since, it is a conflict and the folder wins.
+    //   session: {labels: {name: {text, base}}, statuses: {name: st}, statusBase: {name: st}}
+    //   disk:    {labelText(name) -> canonical text or null, status(name) -> status or null}
+    const AUTO_STATUSES=new Set(['unlabeled','labeled',null,undefined]);
+    function planRecovery(session, disk){
+      const labels=[], statuses=[], conflicts=[];
+      for(const [name,rec] of Object.entries(session?.labels||{})){
+        const cur=disk.labelText(name), base=rec.base ?? null;
+        if(cur===rec.text) continue;
+        if(cur===base) labels.push({name, text:rec.text}); else conflicts.push(name);
+      }
+      for(const [name,st] of Object.entries(session?.statuses||{})){
+        const cur=disk.status(name) ?? null, base=session.statusBase?.[name] ?? null;
+        if(cur===st || (AUTO_STATUSES.has(st) && AUTO_STATUSES.has(cur))) continue;
+        const sameAsBase = cur===base || (AUTO_STATUSES.has(cur) && AUTO_STATUSES.has(base));
+        if(sameAsBase) statuses.push({name, status:st}); else conflicts.push(name);
+      }
+      return {labels, statuses, conflicts:[...new Set(conflicts)]};
+    }
+
     return { splitLines, parseLabelText, serializeLabels, corners, iou, labelFileNameFor, isSafeFileName,
-             parseStatusJson, serializeStatusJson };
+             parseStatusJson, serializeStatusJson, canonicalLabelText, planRecovery };
   })();
   if(typeof module!=='undefined' && module.exports) module.exports=YoloCore;
   </script>
@@ -376,9 +414,151 @@
     const labelDatabase={imageIndex:[],classIndex:{},statusIndex:{labeled:new Set(),unlabeled:new Set()},isBuilt:false,lastUpdate:null};
     const filterCache=new Map(); let currentFilteredIndices=[], isFiltered=false, classFilterState={};
 
-    const STATUS_KEY='yolo_image_status';
-    function persistStatus(){ try{localStorage.setItem(STATUS_KEY,JSON.stringify([...statusMap.entries()].map(([n,s])=>({name:n,status:s}))))}catch{} }
-    function loadStatus(){ try{const raw=localStorage.getItem(STATUS_KEY); if(raw) JSON.parse(raw).forEach(r=>{ if(r?.name&&r?.status) statusMap.set(norm(r.name),r.status) })}catch{} }
+    // ----- autosave: the session is kept in IndexedDB -----
+    // Each change is recorded in the browser at once (a few ms) and written to
+    // the folder shortly after. Reopening the same folder (or dropping the same
+    // images) resumes on the same image and offers back any change that never
+    // reached the folder. One record per folder or image set, in database
+    // "yoloble", store "sessions". Older versions kept a global status list in
+    // localStorage; it is moved here once and used only as a fallback.
+    const LEGACY_STATUS_KEY='yolo_image_status', MAX_SESSIONS=30;
+    let legacyStatus=new Map(); // lower-cased name -> status, read-only
+    let session=null;           // {key, kind, name, handle, names, edited:Set, savedLabels}
+    const idb={db:null, error:null};
+    let storageReady=Promise.resolve();
+
+    function idbOpen(){
+      if(idb.db) return Promise.resolve(idb.db);
+      return new Promise((res,rej)=>{
+        const r=indexedDB.open('yoloble',1);
+        r.onupgradeneeded=()=>{ r.result.createObjectStore('sessions',{keyPath:'key'}); r.result.createObjectStore('meta'); };
+        r.onsuccess=()=>{ idb.db=r.result; idb.db.onversionchange=()=>{ idb.db.close(); idb.db=null; }; res(idb.db); };
+        r.onerror=()=>rej(r.error); r.onblocked=()=>rej(new Error('the browser database is blocked by another Yoloble tab'));
+      });
+    }
+    async function idbTx(stores,mode,fn){
+      const db=await idbOpen();
+      return new Promise((res,rej)=>{
+        const tx=db.transaction(stores,mode,{durability:'strict'}); let out;
+        const r=fn(tx); if(r) r.onsuccess=()=>{ out=r.result; };
+        tx.oncomplete=()=>res(out); tx.onerror=()=>rej(tx.error); tx.onabort=()=>rej(tx.error||new Error('browser database write aborted'));
+      });
+    }
+    const idbGet=(store,key)=>idbTx([store],'readonly',tx=>tx.objectStore(store).get(key));
+    const idbAll=store=>idbTx([store],'readonly',tx=>tx.objectStore(store).getAll());
+
+    async function initStorage(){
+      try{
+        let raw=null; try{ raw=localStorage.getItem(LEGACY_STATUS_KEY); }catch{}
+        if(raw!==null){
+          const merged=new Map((await idbGet('meta','legacyStatus'))||[]);
+          try{ JSON.parse(raw).forEach(r=>{ if(r?.name&&r?.status) merged.set(norm(r.name),r.status); }); }catch{}
+          await idbTx(['meta'],'readwrite',tx=>tx.objectStore('meta').put([...merged],'legacyStatus'));
+          try{ localStorage.removeItem(LEGACY_STATUS_KEY); }catch{}
+        }
+        legacyStatus=new Map((await idbGet('meta','legacyStatus'))||[]);
+        const all=(await idbAll('sessions')).sort((a,b)=>b.updatedAt-a.updatedAt);
+        if(all.length>MAX_SESSIONS) await idbTx(['sessions'],'readwrite',tx=>{ all.slice(MAX_SESSIONS).forEach(r=>tx.objectStore('sessions').delete(r.key)); });
+        await showResumeButton();
+      }catch(e){
+        idb.error=e; console.error('IndexedDB unavailable',e);
+        showNotice(`Yoloble cannot keep a backup in this browser (${e.message||e}). Work is saved only to the folder you open, or by Download Bundle.`);
+      }
+    }
+    async function lastFolderSession(){
+      const key=await idbGet('meta','lastSession'); if(!key) return null;
+      const rec=await idbGet('sessions',key);
+      return rec?.kind==='folder' && rec.handle ? rec : null;
+    }
+    async function showResumeButton(){
+      const rec=await lastFolderSession().catch(()=>null), btn=$("resumeBtn");
+      if(rec && !(folder && await folder.root.isSameEntry(rec.handle).catch(()=>false))){ btn.textContent=`Resume "${rec.name}"`; btn.title=`Reopen ${rec.name} where you left off (${new Date(rec.updatedAt).toLocaleString()})`; btn.style.display=''; }
+      else btn.style.display='none';
+    }
+    async function resumeLastFolder(){
+      const rec=await lastFolderSession().catch(()=>null);
+      if(!rec){ $("resumeBtn").style.display='none'; return; }
+      if(!(await confirmLeaveCurrent())) return;
+      const h=rec.handle;
+      try{
+        if(await h.queryPermission({mode:'readwrite'})==='granted' || await h.requestPermission({mode:'readwrite'})==='granted') return await loadDatasetFromDirectory(h,true);
+        if(await h.queryPermission({mode:'read'})==='granted' || await h.requestPermission({mode:'read'})==='granted') return await loadDatasetFromDirectory(h,false);
+        alert(`Permission to open "${rec.name}" was not given.`);
+      }catch(e){ alert(`Could not reopen "${rec.name}" (${e.message||e}). Use Choose Folder.`); }
+    }
+
+    function persistStatus(){ scheduleSessionSave(); }
+    let sessionTimer=null, sessionSaving=null, sessionAgain=false;
+    function scheduleSessionSave(delay=50){ if(!session) return; clearTimeout(sessionTimer); sessionTimer=setTimeout(saveSessionNow,delay); }
+    function saveSessionNow(){
+      clearTimeout(sessionTimer);
+      if(!session) return Promise.resolve();
+      if(sessionSaving){ sessionAgain=true; return sessionSaving; }
+      sessionSaving=(async()=>{
+        try{
+          do{
+            sessionAgain=false;
+            const rec=buildSessionRecord();
+            await idbTx(['sessions','meta'],'readwrite',tx=>{ tx.objectStore('sessions').put(rec); if(rec.kind==='folder') tx.objectStore('meta').put(rec.key,'lastSession'); });
+          }while(sessionAgain);
+          if(idb.error){ idb.error=null; hideNotice(); }
+        }catch(e){
+          idb.error=e; console.error('Autosave to IndexedDB failed',e);
+          showNotice(`Backup in the browser failed (${e.message||e}). `+(folder?.writable?'Changes are still being saved to the folder.':'Use Download Bundle to keep your work.'));
+        }finally{ sessionSaving=null; }
+      })();
+      return sessionSaving;
+    }
+    function buildSessionRecord(){
+      const statuses={}, statusBase={}, labelsRec={...session.savedLabels};
+      for(const n of session.names){ statuses[n]=statusMap.get(norm(n)) ?? 'unlabeled'; statusBase[n]=save.diskStatus.get(n) ?? null; }
+      for(const n of session.edited){
+        const i=indexOfName(n);
+        if(i>=0) labelsRec[n]={text:YoloCore.serializeLabels(labels[i]||[]), base:save.diskText.has(n)?save.diskText.get(n):null};
+      }
+      session.savedLabels=labelsRec;
+      return {key:session.key, kind:session.kind, name:session.name, handle:session.handle||null, updatedAt:Date.now(),
+              current:imageMetadata[currentImageIndex]?.name ?? null, labels:labelsRec, statuses, statusBase};
+    }
+
+    // Opens the session record for this folder or image set and offers back
+    // changes that never reached the folder. Returns the image to resume on.
+    async function startSession({kind,name,handle,names,key}){
+      await storageReady;
+      let rec=null;
+      try{
+        if(kind==='folder'){ for(const r of await idbAll('sessions')) if(r.kind==='folder' && r.handle && await r.handle.isSameEntry(handle).catch(()=>false)){ rec=r; break; } }
+        else rec=await idbGet('sessions',key);
+      }catch(e){ console.error('Could not read the browser backup',e); }
+      session={key:rec?.key || key || `folder:${name}:${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`, kind, name, handle:handle||null, names, edited:new Set(), savedLabels:rec?.labels||{}};
+      if(!rec) return null;
+      const plan=YoloCore.planRecovery(rec,{labelText:n=>save.diskText.has(n)?save.diskText.get(n):null, status:n=>save.diskStatus.get(n)??null});
+      const nl=plan.labels.length, ns=plan.statuses.length;
+      if(nl||ns){
+        const what=[nl?`${nl} label edit${nl>1?'s':''}`:'', ns?`${ns} status change${ns>1?'s':''}`:''].filter(Boolean).join(' and ');
+        const where=kind==='folder'?`that never reached the folder (Yoloble was closed before they were saved)`:`from your last session with these images`;
+        const names=[...new Set([...plan.labels,...plan.statuses].map(x=>x.name))];
+        const list=names.slice(0,8).map(n=>'  '+n).join('\n')+(names.length>8?`\n  …and ${names.length-8} more`:'');
+        const ok=confirm(`Yoloble kept ${what} for "${name}" ${where}, last change ${new Date(rec.updatedAt).toLocaleString()}:\n\n${list}\n\nOK: restore them${kind==='folder'?' and save them into the folder':''}.\nCancel: discard them.`);
+        if(ok){
+          for(const {name:n,text} of plan.labels){
+            const i=indexOfName(n);
+            if(i>=0) labels[i]=YoloCore.parseLabelText(text).boxes.map(({line,...b})=>b);
+            session.edited.add(n);
+            if(folder) save.pendingLabels.set(n,text);
+          }
+          for(const {name:n,status} of plan.statuses) statusMap.set(norm(n),status);
+          if(folder && ns) save.pendingStatus=true;
+        } else {
+          plan.labels.forEach(({name:n})=>delete session.savedLabels[n]);
+        }
+      }
+      if(plan.conflicts.length) showNotice(`${plan.conflicts.length} image(s) in "${name}" were changed outside Yoloble after it last saved them; the folder's version was kept.`);
+      return rec.current;
+    }
+
+    function showNotice(msg){ $("noticeBannerMsg").textContent=msg; $("noticeBanner").className='banner warn show'; }
+    function hideNotice(){ $("noticeBanner").className='banner warn'; }
     // user=false for statuses derived while loading; those are written with the next real change.
     function setStatus(name,status,{user=true}={}){
       const k=norm(name); if(!k) return false;
@@ -395,12 +575,13 @@
     // round.json and classes.txt are never written.
     let folder=null; // {root, name, writable, labelsDir, imageNames, labelFiles, extraStatus}
     const SAVE_DEBOUNCE_MS=400, SAVE_RETRY_MS=5000;
-    const save={pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
+    // diskText / diskStatus: what the folder holds, as last read or written.
+    const save={pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskStatus:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
     let flushPromise=null;
 
     function resetSaveState(){
       clearTimeout(save.timer); clearTimeout(save.retry);
-      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.error=null; save.lastSaved=null;
+      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.error=null; save.lastSaved=null;
       hideSaveBanner(); updateSaveIndicator();
     }
     const unsavedCount=()=>save.pendingLabels.size+(save.pendingStatus?1:0);
@@ -420,13 +601,16 @@
       if(!folder.labelsDir) folder.labelsDir=await folder.root.getDirectoryHandle('Labels',{create:true});
       await writeTextFile(folder.labelsDir, folder.labelFiles.get(imageName)||YoloCore.labelFileNameFor(imageName), text);
     }
-    function statusFileText(){
-      const names=[...folder.imageNames, ...folder.extraStatus.keys()];
-      return YoloCore.serializeStatusJson(names, n=> folder.extraStatus.get(n) ?? statusMap.get(norm(n)) ?? 'unlabeled');
+    const statusForFile=n=> folder.extraStatus.get(n) ?? statusMap.get(norm(n)) ?? 'unlabeled';
+    function statusFileText(){ return YoloCore.serializeStatusJson([...folder.imageNames, ...folder.extraStatus.keys()], statusForFile); }
+    async function writeStatusFile(){
+      const written=new Map(folder.imageNames.map(n=>[n,statusForFile(n)]));
+      await writeTextFile(folder.root,'image_status.json',statusFileText());
+      written.forEach((st,n)=>save.diskStatus.set(n,st));
     }
-    async function writeStatusFile(){ await writeTextFile(folder.root,'image_status.json',statusFileText()); }
 
     function noteLabelsChanged(name,arr){
+      if(session){ session.edited.add(name); scheduleSessionSave(); }
       if(!folder) return;
       const text=YoloCore.serializeLabels(arr);
       if(save.diskText.get(name)===text) save.pendingLabels.delete(name); else save.pendingLabels.set(name,text);
@@ -468,6 +652,7 @@
         if(folder!==target) return;
         save.error=null; save.lastSaved=new Date(); clearTimeout(save.retry);
         if(folder.writable) hideSaveBanner();
+        scheduleSessionSave();
       }catch(e){
         if(folder!==target) return;
         console.error('Save failed',e);
@@ -788,13 +973,27 @@
       if(lbls.length) await loadLabelsOptimized(lbls);
       if(stats.length) await handleStatusListUploadFiles(stats);
       if(cls.length) await handleClassesFile(cls[0]);
+      if(imgs.length && imageMetadata.length) await startFilesSession();
+    }
+    // Images added by drag and drop: the session is keyed by the set of image names.
+    let uploadedNames=[];
+    async function startFilesSession(){
+      const names=[...new Set(uploadedNames)].sort();
+      let h=0x811c9dc5; for(const ch of names.join('\n')){ h^=ch.codePointAt(0); h=Math.imul(h,16777619)>>>0; }
+      names.forEach(n=>save.diskStatus.set(n,statusMap.get(norm(n))??null));
+      const resume=await startSession({kind:'files', key:`files:${names.length}:${h.toString(16)}`, name:`${names.length} dropped images`, names});
+      applyDeletedFilter(); buildLabelDatabase();
+      const i=resume?indexOfName(resume):-1;
+      if(i>=0) currentImageIndex=i;
+      await loadCurrentImage(); updateUI(); updateQuickNavigation(); scheduleSessionSave();
     }
 
     async function loadImagesOptimized(files){
       showLoading('Analyzing Images...','Preparing image metadata...');
       if(!(await confirmLeaveCurrent())){ hideLoading(); return; }
-      folder=null; resetSaveState();
+      folder=null; session=null; resetSaveState(); statusMap=new Map(legacyStatus);
       imageMetadata=[]; imageCache.clear(); labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false;
+      uploadedNames=files.map(f=>f.name);
       for(let i=0;i<files.length;i++){
         if(!updateLoading((i/files.length)*50,`Analyzing ${i+1}/${files.length}...`)) return;
         const f=files[i]; imageMetadata.push({name:f.name,file:f,size:f.size,loaded:false,img:null});
@@ -827,7 +1026,7 @@
         let found=-1, strat='';
         for(let k=0;k<imageMetadata.length;k++){ const im=imageMetadata[k].name.replace(/\.[^/.]+$/,''); if(im===ln){found=k;strat='exact';break} }
         if(found===-1){ for(let k=0;k<imageMetadata.length;k++){ if(norm(imageMetadata[k].name.replace(/\.[^/.]+$/,''))===norm(ln)){found=k;strat='lower';break} } }
-        if(found!==-1){ labels[found]=parsed; ok++; imageMetadata[found].labelFile=lf.name; imageMetadata[found].matchStrategy=strat; imageMetadata[found].labelLoadTime=Date.now(); if(parsed.length>0) setStatus(imageMetadata[found].name,'labeled',{user:false}); }
+        if(found!==-1){ labels[found]=parsed; ok++; save.diskText.set(imageMetadata[found].name, YoloCore.canonicalLabelText(text)); imageMetadata[found].labelFile=lf.name; imageMetadata[found].matchStrategy=strat; imageMetadata[found].labelLoadTime=Date.now(); if(parsed.length>0) setStatus(imageMetadata[found].name,'labeled',{user:false}); }
         if(i%50===0) await new Promise(r=>setTimeout(r,0));
       }
       updateLoading(90,'Building database...'); buildLabelDatabase();
@@ -858,6 +1057,7 @@
       meta.loaded=true; meta.img=img;
       boxes=[...labels[idx]||[]]; boxesOwner=meta.name; selectedBoxIndex=-1; updateBoxList(); updateZoomLevel(); scheduleDraw();
       if(unsavedCount()) scheduleSave(0);
+      scheduleSessionSave();
       $("loadedImages").textContent=imageCache.size();
     }
     async function loadCurrentImage(){ await loadImageAtIndex(currentImageIndex); }
@@ -1085,7 +1285,8 @@ Generated: ${new Date().toISOString()}`;
 
     async function loadDatasetFromDirectory(rootHandle, writable=false){
       showLoading('Loading Dataset...','Scanning structure...');
-      folder=null; resetSaveState();
+      await storageReady;
+      folder=null; session=null; resetSaveState(); statusMap=new Map(legacyStatus);
       imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear();
       const loadWarnings=[];
       let statusEntries=new Map();
@@ -1106,7 +1307,7 @@ Generated: ${new Date().toISOString()}`;
         if(statusJsonHandle){
           const r=YoloCore.parseStatusJson(await (await statusJsonHandle.getFile()).text());
           if(r.error) loadWarnings.push(`${r.error}. It will be rewritten from the statuses shown here when you change one.`);
-          statusEntries=r.entries; statusEntries.forEach((st,n)=>statusMap.set(norm(n), st));
+          statusEntries=r.entries; statusEntries.forEach((st,n)=>{ statusMap.set(norm(n), st); save.diskStatus.set(n, st); });
         } else {
           if(deletedTxtHandle){ const t=await (await deletedTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'deleted')); }
           if(labeledTxtHandle){ const t=await (await labeledTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'labeled')); }
@@ -1160,19 +1361,25 @@ Generated: ${new Date().toISOString()}`;
             imageMetadata[i].labelFile=fileName; imageMetadata[i].matchStrategy='exact';
             // What is on disk, in the form Yoloble would write it; a file with
             // unreadable lines keeps its raw text so the next edit rewrites it.
-            save.diskText.set(name, parsed.bad.length ? text : YoloCore.serializeLabels(labels[i]));
+            save.diskText.set(name, YoloCore.canonicalLabelText(text));
             if(parsed.bad.length) loadWarnings.push(`Labels/${fileName}: ${parsed.bad.length} unreadable line(s), e.g. line ${parsed.bad[0].line+1} (${parsed.bad[0].reason}).`);
             if(labels[i].length>0) setStatus(name,'labeled',{user:false});
           }
         }
       }
 
+      updateLoading(85,'Checking for unsaved work...');
+      const resume=await startSession({kind:'folder', name:rootHandle.name, handle:rootHandle, names:allImageNames});
+      applyDeletedFilter();
       updateLoading(90,'Building index...');
       buildLabelDatabase();
-      await loadImageAtIndex(0);
+      const ri=resume?indexOfName(resume):-1;
+      currentImageIndex=ri>=0?ri:0;
+      await loadImageAtIndex(currentImageIndex);
       updateLoading(100,'Complete');
-      updateSaveIndicator();
+      updateSaveIndicator(); showResumeButton(); saveSessionNow();
       if(!writable) showSaveBanner();
+      if(unsavedCount()) scheduleSave(0);
       setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats();
         if(loadWarnings.length) alert('Opened with warnings:\n\n'+loadWarnings.slice(0,12).join('\n')+(loadWarnings.length>12?`\n…and ${loadWarnings.length-12} more`:'')); },200);
     }
@@ -1186,12 +1393,13 @@ Generated: ${new Date().toISOString()}`;
     }
 
     function init(){
-      loadStatus();
+      storageReady=initStorage();
       setupCanvas(); setupClassSelector(); setupEventListeners(); setupClassFilterGrid();
       updateUI(); updateDatabaseStatus();
       setInterval(cleanupMemory,30000);
       window.addEventListener('beforeunload',e=>{ if(hasUnsavedWork()){ flushSaves(); e.preventDefault(); e.returnValue=''; } });
-      document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushSaves(); });
+      document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden'){ saveSessionNow(); flushSaves(); } });
+      window.addEventListener('pagehide',()=>{ saveSessionNow(); });
       updateSaveIndicator();
     }
 
@@ -1295,10 +1503,10 @@ Generated: ${new Date().toISOString()}`;
       exportStats: ()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buildStatsText()],{type:'text/plain'})); a.download='dataset_statistics.txt'; a.click(); },
       downloadBundle,
       showDetailedDebug, deleteCurrentImage,
-      chooseFolder, grantWriteAccess, retrySave,
+      chooseFolder, grantWriteAccess, retrySave, resumeLastFolder, hideNotice,
       cancelLoading,
       // For the automated tests (tests/e2e.test.js); not used by the page.
-      _openFolder: openFolder, _flushSaves: ()=>flushSaves(),
+      _openFolder: openFolder, _flushSaves: ()=>flushSaves(), _saveSession: ()=>saveSessionNow(), _storageReady: ()=>storageReady,
       _loadReadOnlyForTests: h=>loadDatasetFromDirectory(h,false),
       _toClient: pts=>{ updateRenderState(); const r=canvas.getBoundingClientRect(); return pts.map(p=>{ const s=imageToScreen(p.x*RS.imgW,p.y*RS.imgH); return {x:r.left+s.x, y:r.top+s.y}; }); },
       _snapshot: ()=>({ index:currentImageIndex, name:imageMetadata[currentImageIndex]?.name??null, count:imageMetadata.length,
