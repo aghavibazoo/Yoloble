@@ -1204,6 +1204,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     function retrySave(){ save.error=null; hideSaveBanner(); return flushSaves(); }
     async function replaceBrokenStatusFile(){
       if(!folder?.statusProblem || !folder.statusRaw) return;
+      if(folder.otherWindow){ alert(`"${folder.name}" is open in another Yoloble window; replace image_status.json there.`); return; }
       if(!confirm(`Replace image_status.json with the statuses Yoloble shows? The current file is kept as ${STATUS_BACKUP}.`)) return;
       if(!(await verifyPermission(folder.root,false))){ alert('Yoloble cannot write to this folder.'); return; }
       try{ await writeTextFile(folder.root, STATUS_BACKUP, folder.statusRaw); }
@@ -1220,7 +1221,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     function showSaveBanner(){
       const b=$("saveBanner"), broken=!!folder.statusProblem, perm=!broken && !folder.otherWindow && (!folder.writable || isPermissionError(save.error));
       b.className='banner show '+(folder.writable?'error':'warn');
-      $("saveBannerReplace").style.display = broken && folder.statusRaw ? '' : 'none';
+      $("saveBannerReplace").style.display = broken && folder.statusRaw && !folder.otherWindow ? '' : 'none';
       $("saveBannerMsg").textContent = folder.otherWindow
         ? `"${folder.name}" is open in another Yoloble tab or window. So that the two cannot overwrite each other's work, this one is read-only: changes here are NOT saved. Close the other one, then open the folder here again.`
         : broken

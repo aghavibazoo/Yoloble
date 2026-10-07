@@ -427,4 +427,21 @@ test('R3: an outside change to image_status.json is merged even when its timesta
   assert.equal(now[other], 'deleted', 'the outside change survives');
 }));
 
+test('R4: a second window cannot replace a broken image_status.json', { skip }, () => withBrowser(async a => {
+  const files = ORIGINAL();
+  const broken = Buffer.from(files['image_status.json'].toString().slice(0, -20));
+  files['image_status.json'] = broken;
+  await putFolder(a, 'round', files);
+  await openRound(a);
+  const b = await a.newTab();
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"'); await b.focus();
+  await openRound(b);
+  assert.equal(await b.evaluate(`getComputedStyle(document.getElementById('saveBannerReplace')).display`), 'none');
+  await b.evaluate('YOLOUI.replaceBrokenStatusFile()');
+  await sleep(500);
+  const disk = await getFolder(a, 'round');
+  assert.ok(disk['image_status.json'].equals(broken));
+  assert.equal(disk['image_status.json.bak'], undefined);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

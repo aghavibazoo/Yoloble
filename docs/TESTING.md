@@ -176,3 +176,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Second window without a backup record (R2): open the round in one tab; in DevTools > Application > IndexedDB > yoloble > sessions, clear the store; open the same folder in a second tab: it is read-only. Two different folders that are both called `round_003` open writable in two tabs.
 - [ ] `node --test` (all files in parallel) passes repeatedly; each test browser uses a port chosen by Chrome, so parallel test processes never share a browser.
 - [ ] Outside changes on a USB stick (R3): with the round on a FAT/exFAT stick, change a status in `image_status.json` with Notepad and save within a second of Yoloble saving, then review an image: both changes are in the file.
+- [ ] R4: with a broken `image_status.json`, open the folder in two tabs: only the first offers **Replace image_status.json**.
