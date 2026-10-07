@@ -310,4 +310,17 @@ test('file and class names are shown as text, never interpreted as HTML', { skip
   assert.equal(await b.evaluate('document.querySelectorAll("#imageName img, #filterResults b, #debugInfo img").length'), 0);
 }));
 
+test('the ZIP export works with no network (JSZip is inside index.html)', { skip }, async () => {
+  const b = await launch();
+  try {
+    await b.send('Network.enable');
+    await b.send('Network.setBlockedURLs', { urls: ['*cdnjs.cloudflare.com*', '*unpkg.com*', '*jsdelivr.net*'] });
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    await putFolder(b, 'round', ORIGINAL());
+    await openRound(b);
+    const n = await b.evaluate(`(async () => Object.keys((await JSZip.loadAsync(await YOLOUI._buildBundle())).files).length)()`);
+    assert.ok(n > 12);
+  } finally { await b.close(); }
+});
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

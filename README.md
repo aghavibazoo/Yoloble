@@ -82,7 +82,7 @@ project.json           classes, statuses, round ID
 ## Browser support and limits
 
 - Chromium-based browsers (Chrome, Edge, Brave): folder access needs the File System Access API.
-- The ZIP library loads from cdnjs; everything else works offline.
+- Everything works offline, the ZIP export included (JSZip 3.10.1 is inside `index.html`).
 - The browser backup is per browser profile: resuming on another computer starts from what is in the folder.
 - Two tabs on the same folder both write to it; use one.
 
