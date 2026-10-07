@@ -2552,7 +2552,11 @@ Generated: ${new Date().toISOString()}`;
           const file=await classFileHandle.getFile();
           const lines=(await file.text()).trim().split('\n').filter(l=>l.trim());
           if(lines.length){ CLASS_NAMES=lines.map((l,i)=>l.trim()||`Class ${i}`); rebuildClassUI(); }
-        }catch{}
+        }catch(e){
+          console.error(classFileHandle.name,e);
+          loadWarnings.push(`${classFileHandle.name} could not be read (${e.message||e}); the class names shown are ${round?.classes?'those of round.json':'the previous ones'}.`);
+          if(round?.classes){ CLASS_NAMES=round.classes.slice(); rebuildClassUI(); }
+        }
       }
 
       // Entries for files that are not in Images/ are kept as they are; entries

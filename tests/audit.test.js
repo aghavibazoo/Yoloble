@@ -498,4 +498,18 @@ test('R6: a label file named like its image except for case is shown, flagged an
   assert.match(await b.evaluate(`document.getElementById('saveBannerMsg').textContent`), /must be renamed/);
 }));
 
+test('no catch block in the app is silent', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const app = html.slice(html.indexOf('<script id="yoloble-core">'));
+  assert.deepEqual(app.match(/catch\s*(\(\s*\w*\s*\))?\s*\{\s*\}/g) || [], []);
+});
+
+test('an unreadable classes.txt is reported when the folder opens', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await b.evaluate(`(() => { const g = FileSystemFileHandle.prototype.getFile; let n = 0;
+    FileSystemFileHandle.prototype.getFile = function () { return this.name === 'classes.txt' && ++n > 1 ? Promise.reject(new DOMException('read error (simulated)', 'NotReadableError')) : g.call(this); }; })()`);
+  await openRound(b);
+  assert.match(b.dialogs.join('\n'), /classes\.txt could not be read \(read error \(simulated\)\)/);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
