@@ -6,7 +6,7 @@
   <title>YOLO Bounding Box Editor</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#1a1a1a;color:#fff;overflow:hidden}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;background:#1a1a1a;color:#fff;overflow:hidden;display:flex;flex-direction:column;height:100vh}
     .header{background:#2d2d2d;padding:10px 20px;display:flex;flex-direction:column;gap:8px;border-bottom:2px solid #333}
     .controls-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
     .left-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
@@ -17,7 +17,7 @@
     .btn-danger{background:#e74c3c}.btn-danger:hover{background:#c0392b}
     .btn-plain{background:#444}
     .info{display:flex;gap:20px;align-items:center;font-size:14px}
-    .main-container{display:flex;height:calc(100vh - 110px)}
+    .main-container{display:flex;flex:1;min-height:0}
     .canvas-container{flex:1;position:relative;background:#0a0a0a;overflow:hidden}
     #canvas{display:block;width:100%;height:100%;cursor:crosshair}
     .sidebar{width:350px;background:#2d2d2d;border-left:2px solid #333;padding:20px;overflow-y:auto}
@@ -83,6 +83,17 @@
     .sidebar-toggle{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:10;background:#4a90e2;color:#fff;border:none;padding:8px 4px;cursor:pointer;font-size:14px;border-radius:4px 0 0 4px;opacity:.7;transition:opacity .2s,right .3s ease}
     .sidebar-toggle:hover{opacity:1}
     .sidebar-toggle.collapsed{right:0}
+    .save-state{font-size:13px;padding:4px 10px;border-radius:12px;background:#444;color:#ddd;white-space:nowrap}
+    .save-state.saved{background:#1e5631;color:#c8f7d0}
+    .save-state.pending,.save-state.saving{background:#6b5a12;color:#ffe9a3}
+    .save-state.error,.save-state.readonly{background:#7a1f1f;color:#ffd0d0}
+    .banner{display:none;padding:8px 20px;font-size:14px;align-items:center;gap:12px;flex-wrap:wrap}
+    .banner.show{display:flex}
+    .banner.error{background:#a32020;color:#fff}
+    .banner.warn{background:#8a6d0b;color:#fff}
+    .banner.info{background:#1f4e79;color:#fff}
+    .banner .msg{flex:1;min-width:200px}
+    .banner button{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.5);padding:4px 10px;border-radius:4px;cursor:pointer}
   </style>
 </head>
 <body>
@@ -96,6 +107,7 @@
         <button class="btn" onclick="YOLOUI.exportStats()" title="Export dataset statistics">Stats</button>
       </div>
       <div class="right-controls info">
+        <span id="saveState" class="save-state" title="Where your changes are saved">No folder open</span>
         <div class="image-nav">
           <button class="nav-btn" id="prevBtn" onclick="YOLOUI.previousImage()" disabled>◀ Prev (A)</button>
           <span id="imageCounter">0 / 0</span>
@@ -110,6 +122,13 @@
         <button class="btn btn-plain" id="noLabelBtn" onclick="YOLOUI.markNoLabel()">No Label</button>
       </div>
     </div>
+  </div>
+
+  <div id="saveBanner" class="banner error" role="alert">
+    <span class="msg" id="saveBannerMsg"></span>
+    <button id="saveBannerGrant" onclick="YOLOUI.grantWriteAccess()">Allow saving to folder</button>
+    <button id="saveBannerRetry" onclick="YOLOUI.retrySave()">Retry now</button>
+    <button onclick="YOLOUI.downloadBundle()">Download Bundle (ZIP)</button>
   </div>
 
   <div class="main-container">
@@ -294,7 +313,30 @@
 
     function labelFileNameFor(imageName){ return String(imageName).replace(/\.[^/.]+$/,'')+'.txt'; }
 
-    return { splitLines, parseLabelText, serializeLabels, corners, iou, labelFileNameFor };
+    // A plain file name: no path separators, no reserved characters, not "." or "..".
+    function isSafeFileName(name){
+      const s=String(name ?? '');
+      return s.length>0 && s.length<=255 && s!=='.' && s!=='..' && !/[\\/:*?"<>|\u0000-\u001f]/.test(s);
+    }
+
+    // image_status.json: [{"name": ..., "status": ...}]. Names are kept exactly.
+    function parseStatusJson(text){
+      let arr;
+      try{ arr=JSON.parse(String(text ?? '').replace(/^﻿/,'')); }catch(e){ return {entries:new Map(), error:`image_status.json is not valid JSON (${e.message})`}; }
+      if(!Array.isArray(arr)) return {entries:new Map(), error:'image_status.json is not a JSON array'};
+      const entries=new Map();
+      for(const r of arr) if(r && typeof r.name==='string' && r.name && typeof r.status==='string' && r.status) entries.set(r.name, r.status);
+      return {entries, error:null};
+    }
+    const byCodePoint=(a,b)=>a<b?-1:a>b?1:0;
+    // One entry per name, sorted, two-space indented, trailing newline.
+    function serializeStatusJson(names, statusOf){
+      const rows=[...new Set(names)].sort(byCodePoint).map(name=>({name, status:statusOf(name)||'unlabeled'}));
+      return JSON.stringify(rows,null,2)+'\n';
+    }
+
+    return { splitLines, parseLabelText, serializeLabels, corners, iou, labelFileNameFor, isSafeFileName,
+             parseStatusJson, serializeStatusJson };
   })();
   if(typeof module!=='undefined' && module.exports) module.exports=YoloCore;
   </script>
@@ -337,7 +379,145 @@
     const STATUS_KEY='yolo_image_status';
     function persistStatus(){ try{localStorage.setItem(STATUS_KEY,JSON.stringify([...statusMap.entries()].map(([n,s])=>({name:n,status:s}))))}catch{} }
     function loadStatus(){ try{const raw=localStorage.getItem(STATUS_KEY); if(raw) JSON.parse(raw).forEach(r=>{ if(r?.name&&r?.status) statusMap.set(norm(r.name),r.status) })}catch{} }
-    function setStatus(name,status){ const k=norm(name); if(!k) return; if(status==='unlabeled'){ if(statusMap.get(k)!=='deleted') statusMap.set(k,'unlabeled'); } else statusMap.set(k,status); persistStatus() }
+    // user=false for statuses derived while loading; those are written with the next real change.
+    function setStatus(name,status,{user=true}={}){
+      const k=norm(name); if(!k) return false;
+      const prev=statusMap.get(k);
+      const next=(status==='unlabeled' && prev==='deleted') ? prev : status;
+      if(prev===next) return false;
+      statusMap.set(k,next); persistStatus();
+      if(user && folder) noteStatusChanged();
+      return true;
+    }
+    // ----- saving back to the opened folder -----
+    // The only files Yoloble writes are Labels/<image base name>.txt and
+    // image_status.json, both inside the folder the user opened. Images/,
+    // round.json and classes.txt are never written.
+    let folder=null; // {root, name, writable, labelsDir, imageNames, labelFiles, extraStatus}
+    const SAVE_DEBOUNCE_MS=400, SAVE_RETRY_MS=5000;
+    const save={pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
+    let flushPromise=null;
+
+    function resetSaveState(){
+      clearTimeout(save.timer); clearTimeout(save.retry);
+      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.error=null; save.lastSaved=null;
+      hideSaveBanner(); updateSaveIndicator();
+    }
+    const unsavedCount=()=>save.pendingLabels.size+(save.pendingStatus?1:0);
+    const hasUnsavedWork=()=>!!folder && (unsavedCount()>0 || !!flushPromise);
+
+    async function writeTextFile(dir,fileName,text){
+      if(!YoloCore.isSafeFileName(fileName)) throw new Error(`refusing to write unsafe file name "${fileName}"`);
+      const fh=await dir.getFileHandle(fileName,{create:true});
+      // createWritable() writes to a temporary file and swaps it into place on close().
+      const w=await fh.createWritable({keepExistingData:false});
+      try{ await w.write(text); await w.close(); }
+      catch(e){ try{ await w.abort(); }catch{} throw e; }
+      const back=await (await fh.getFile()).text();
+      if(back!==text) throw new Error(`${fileName} did not read back as written`);
+    }
+    async function writeLabelFile(imageName,text){
+      if(!folder.labelsDir) folder.labelsDir=await folder.root.getDirectoryHandle('Labels',{create:true});
+      await writeTextFile(folder.labelsDir, folder.labelFiles.get(imageName)||YoloCore.labelFileNameFor(imageName), text);
+    }
+    function statusFileText(){
+      const names=[...folder.imageNames, ...folder.extraStatus.keys()];
+      return YoloCore.serializeStatusJson(names, n=> folder.extraStatus.get(n) ?? statusMap.get(norm(n)) ?? 'unlabeled');
+    }
+    async function writeStatusFile(){ await writeTextFile(folder.root,'image_status.json',statusFileText()); }
+
+    function noteLabelsChanged(name,arr){
+      if(!folder) return;
+      const text=YoloCore.serializeLabels(arr);
+      if(save.diskText.get(name)===text) save.pendingLabels.delete(name); else save.pendingLabels.set(name,text);
+      scheduleSave();
+    }
+    function noteStatusChanged(){ if(!folder) return; save.pendingStatus=true; scheduleSave(); }
+    const isPermissionError=e=>e?.name==='NotAllowedError'||e?.name==='SecurityError';
+    function scheduleSave(delay=SAVE_DEBOUNCE_MS){
+      updateSaveIndicator();
+      if(!folder?.writable || (save.error && isPermissionError(save.error))) return;
+      clearTimeout(save.timer); save.timer=setTimeout(flushSaves,delay);
+    }
+
+    // Writes everything pending; resolves when nothing is left or a write failed.
+    function flushSaves(){
+      clearTimeout(save.timer); save.timer=null;
+      if(!folder?.writable) return Promise.resolve();
+      if(flushPromise){ save.again=true; return flushPromise; }
+      flushPromise=(async()=>{
+        try{ do{ save.again=false; await flushOnce(); } while(save.again && !save.error); }
+        finally{ flushPromise=null; updateSaveIndicator(); }
+      })();
+      updateSaveIndicator();
+      return flushPromise;
+    }
+    async function flushOnce(){
+      const target=folder;
+      try{
+        for(const [name,text] of [...save.pendingLabels]){
+          await writeLabelFile(name,text);
+          if(folder!==target) return;
+          save.diskText.set(name,text);
+          if(save.pendingLabels.get(name)===text) save.pendingLabels.delete(name);
+        }
+        if(save.pendingStatus){
+          save.pendingStatus=false;
+          try{ await writeStatusFile(); }catch(e){ save.pendingStatus=true; throw e; }
+        }
+        if(folder!==target) return;
+        save.error=null; save.lastSaved=new Date(); clearTimeout(save.retry);
+        if(folder.writable) hideSaveBanner();
+      }catch(e){
+        if(folder!==target) return;
+        console.error('Save failed',e);
+        save.error=e; showSaveBanner();
+        clearTimeout(save.retry);
+        if(!isPermissionError(e)) save.retry=setTimeout(()=>flushSaves(),SAVE_RETRY_MS);
+      }
+    }
+    function retrySave(){ save.error=null; hideSaveBanner(); return flushSaves(); }
+    async function grantWriteAccess(){
+      if(!folder) return;
+      if(await verifyPermission(folder.root,false)){ folder.writable=true; save.error=null; hideSaveBanner(); scheduleSave(0); }
+      else alert('Yoloble still cannot write to this folder. Use Download Bundle to keep your work.');
+    }
+
+    function showSaveBanner(){
+      const b=$("saveBanner"), perm=!folder.writable || isPermissionError(save.error);
+      b.className='banner show '+(folder.writable?'error':'warn');
+      $("saveBannerMsg").textContent = !folder.writable
+        ? `"${folder.name}" was opened read-only, so changes are NOT saved into it. Allow saving, or use Download Bundle before you close Yoloble.`
+        : `Could not save to "${folder.name}": ${save.error?.message||save.error}. ${unsavedCount()} change(s) are not on disk yet. `+
+          (perm ? 'Allow saving to continue.' : `Retrying every ${SAVE_RETRY_MS/1000} s. Do not close Yoloble until this message goes away, or use Download Bundle.`);
+      $("saveBannerGrant").style.display=perm?'':'none';
+      $("saveBannerRetry").style.display=folder.writable?'':'none';
+      updateSaveIndicator();
+    }
+    function hideSaveBanner(){ $("saveBanner").className='banner error'; }
+    function updateSaveIndicator(){
+      const el=$("saveState"); if(!el) return;
+      const n=unsavedCount(); let cls='', text, title;
+      if(!folder){ text=imageMetadata.length?'Not saving to a folder':'No folder open'; title='Open a folder with Choose Folder to save into it. Otherwise use Download Bundle.'; }
+      else if(!folder.writable){ cls='readonly'; text='Read-only: not saving'; title=`"${folder.name}" was opened without write access.`; }
+      else if(save.error){ cls='error'; text=`Save failed (${n} unsaved)`; title=String(save.error?.message||save.error); }
+      else if(flushPromise){ cls='saving'; text='Saving…'; title=`Writing to "${folder.name}"`; }
+      else if(n){ cls='pending'; text=`${n} unsaved change${n>1?'s':''}`; title='Saving shortly'; }
+      else { cls='saved'; text='All changes saved'; title=save.lastSaved?`Last saved ${save.lastSaved.toLocaleTimeString()} into "${folder.name}"`:`Saving into "${folder.name}"`; }
+      el.className='save-state '+cls; el.textContent=text; el.title=title;
+    }
+    async function confirmLeaveCurrent(){
+      if(!folder) return true;
+      if(folder.writable) await flushSaves();
+      const n=unsavedCount();
+      return !n || confirm(`${n} change(s) could not be saved to "${folder.name}". Continue anyway and lose them?`);
+    }
+    function commitEdit(){
+      if(!imageMetadata.length || currentImageIndex<0) return;
+      saveCurrentLabels(); updateImageInDatabase(currentImageIndex);
+      noteLabelsChanged(imageMetadata[currentImageIndex].name, labels[currentImageIndex]);
+    }
+
     const getDeletedSet=()=>{ const s=new Set(); for(const [n,st] of statusMap.entries()) if(st==='deleted') s.add(n); return s; };
 
     function showLoading(t="Loading...",s="Processing..."){$("loadingTitle").textContent=t;$("loadingStatus").textContent=s;$("loadingProgress").style.width='0%';$("loadingOverlay").style.display='flex';isLoading=true;loadingCancelled=false}
@@ -492,7 +672,7 @@
         const nm=imageMetadata[i].name, arr=labels[i]||[], hasBoxes=arr.length>0, forced=statusMap.get(norm(nm))==='labeled' && !arr.length;
         const classes=new Set(); arr.forEach(b=>{ classes.add(b.cls); labelDatabase.classIndex[b.cls].add(i); });
         labelDatabase.imageIndex[i]={hasLabels:hasBoxes||forced,classes,boxCount:arr.length,lastModified:Date.now()};
-        if(hasBoxes||forced){ labelDatabase.statusIndex.labeled.add(i); setStatus(nm,'labeled'); } else { labelDatabase.statusIndex.unlabeled.add(i); if(statusMap.get(norm(nm))!=='deleted') setStatus(nm,'unlabeled'); }
+        if(hasBoxes||forced){ labelDatabase.statusIndex.labeled.add(i); setStatus(nm,'labeled',{user:false}); } else { labelDatabase.statusIndex.unlabeled.add(i); if(statusMap.get(norm(nm))!=='deleted') setStatus(nm,'unlabeled',{user:false}); }
       }
       labelDatabase.isBuilt=true; labelDatabase.lastUpdate=Date.now(); filterCache.clear(); updateDatabaseStatus(); updateFilterStats();
     }
@@ -584,9 +764,9 @@
     const getValidIndices=()=>{ const base=isFiltered?currentFilteredIndices:Array.from({length:imageMetadata.length},(_,i)=>i); const del=getDeletedSet(); return base.filter(i=>!del.has(norm(imageMetadata[i].name))); };
     const getCurrentImageStatus=()=> !isFiltered?'normal':(currentFilteredIndices.includes(currentImageIndex)?'filtered-in':'filtered-out');
 
-    async function previousImage(){ saveCurrentLabels(); updateImageInDatabase(currentImageIndex); const st=getCurrentImageStatus(); if(isFiltered && st==='filtered-out'){ const prev=currentFilteredIndices.filter(i=>i<currentImageIndex).pop(); if(prev!==undefined){ currentImageIndex=prev; await loadCurrentImage(); updateUI(); } } else { const v=getValidIndices(); const p=v.indexOf(currentImageIndex); if(p>0){ currentImageIndex=v[p-1]; await loadCurrentImage(); updateUI(); } } }
-    async function nextImage(){ saveCurrentLabels(); updateImageInDatabase(currentImageIndex); const st=getCurrentImageStatus(); if(isFiltered && st==='filtered-out'){ const nxt=currentFilteredIndices.find(i=>i>currentImageIndex); if(nxt!==undefined){ currentImageIndex=nxt; await loadCurrentImage(); updateUI(); } } else { const v=getValidIndices(); const p=v.indexOf(currentImageIndex); if(p<v.length-1){ currentImageIndex=v[p+1]; await loadCurrentImage(); updateUI(); } } }
-    async function jumpToIndex(rel){ const v=getValidIndices(); if(rel>=0&&rel<v.length){ saveCurrentLabels(); updateImageInDatabase(currentImageIndex); currentImageIndex=v[rel]; await loadCurrentImage(); updateUI(); } }
+    async function previousImage(){ commitEdit(); const st=getCurrentImageStatus(); if(isFiltered && st==='filtered-out'){ const prev=currentFilteredIndices.filter(i=>i<currentImageIndex).pop(); if(prev!==undefined){ currentImageIndex=prev; await loadCurrentImage(); updateUI(); } } else { const v=getValidIndices(); const p=v.indexOf(currentImageIndex); if(p>0){ currentImageIndex=v[p-1]; await loadCurrentImage(); updateUI(); } } }
+    async function nextImage(){ commitEdit(); const st=getCurrentImageStatus(); if(isFiltered && st==='filtered-out'){ const nxt=currentFilteredIndices.find(i=>i>currentImageIndex); if(nxt!==undefined){ currentImageIndex=nxt; await loadCurrentImage(); updateUI(); } } else { const v=getValidIndices(); const p=v.indexOf(currentImageIndex); if(p<v.length-1){ currentImageIndex=v[p+1]; await loadCurrentImage(); updateUI(); } } }
+    async function jumpToIndex(rel){ const v=getValidIndices(); if(rel>=0&&rel<v.length){ commitEdit(); currentImageIndex=v[rel]; await loadCurrentImage(); updateUI(); } }
     function goToImage(){ const n=parseInt($("pageInput").value); const v=getValidIndices(); if(n>=1&&n<=v.length){ jumpToIndex(n-1); $("pageInput").value=''; } else alert(`Enter 1..${v.length}`) }
 
     async function routeUploads(files){
@@ -602,6 +782,8 @@
 
     async function loadImagesOptimized(files){
       showLoading('Analyzing Images...','Preparing image metadata...');
+      if(!(await confirmLeaveCurrent())){ hideLoading(); return; }
+      folder=null; resetSaveState();
       imageMetadata=[]; imageCache.clear(); labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false;
       for(let i=0;i<files.length;i++){
         if(!updateLoading((i/files.length)*50,`Analyzing ${i+1}/${files.length}...`)) return;
@@ -635,7 +817,7 @@
         let found=-1, strat='';
         for(let k=0;k<imageMetadata.length;k++){ const im=imageMetadata[k].name.replace(/\.[^/.]+$/,''); if(im===ln){found=k;strat='exact';break} }
         if(found===-1){ for(let k=0;k<imageMetadata.length;k++){ if(norm(imageMetadata[k].name.replace(/\.[^/.]+$/,''))===norm(ln)){found=k;strat='lower';break} } }
-        if(found!==-1){ labels[found]=parsed; ok++; imageMetadata[found].labelFile=lf.name; imageMetadata[found].matchStrategy=strat; imageMetadata[found].labelLoadTime=Date.now(); if(parsed.length>0) setStatus(imageMetadata[found].name,'labeled'); }
+        if(found!==-1){ labels[found]=parsed; ok++; imageMetadata[found].labelFile=lf.name; imageMetadata[found].matchStrategy=strat; imageMetadata[found].labelLoadTime=Date.now(); if(parsed.length>0) setStatus(imageMetadata[found].name,'labeled',{user:false}); }
         if(i%50===0) await new Promise(r=>setTimeout(r,0));
       }
       updateLoading(90,'Building database...'); buildLabelDatabase();
@@ -664,6 +846,7 @@
       }
       meta.loaded=true; meta.img=img;
       boxes=[...labels[idx]||[]]; selectedBoxIndex=-1; updateBoxList(); updateZoomLevel(); scheduleDraw();
+      if(unsavedCount()) scheduleSave(0);
       $("loadedImages").textContent=imageCache.size();
     }
     async function loadCurrentImage(){ await loadImageAtIndex(currentImageIndex); }
@@ -724,7 +907,7 @@
       if(!imageMetadata.length) return;
       const meta=imageMetadata[currentImageIndex];
       setStatus(meta.name,'labeled'); boxes=[]; labels[currentImageIndex]=[];
-      updateBoxList(); scheduleDraw(); updateImageInDatabase(currentImageIndex); updateUI();
+      updateBoxList(); scheduleDraw(); commitEdit(); updateUI();
     }
 
     function fitToScreen(){
@@ -771,7 +954,7 @@
     }
 
     function saveState(){ undoStack.push(JSON.parse(JSON.stringify(boxes))); if(undoStack.length>MAX_UNDO) undoStack.shift(); $("undoBtn").disabled=false }
-    function undo(){ if(!undoStack.length) return; boxes=undoStack.pop(); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); $("undoBtn").disabled=undoStack.length===0; saveCurrentLabels(); updateImageInDatabase(currentImageIndex); }
+    function undo(){ if(!undoStack.length) return; boxes=undoStack.pop(); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); $("undoBtn").disabled=undoStack.length===0; commitEdit(); }
     function saveCurrentLabels(){ if(imageMetadata.length && currentImageIndex>=0) labels[currentImageIndex]=[...boxes]; }
 
     function updateBoxList(){
@@ -780,7 +963,7 @@
         const it=document.createElement('div'); it.className=`box-item ${i===selectedBoxIndex?'selected':''}`;
         const sp=document.createElement('span'); sp.textContent=`${i+1}. ${CLASS_NAMES[b.cls]}`;
         const del=document.createElement('button'); del.className='delete-btn'; del.textContent='Delete';
-        del.onclick=(ev)=>{ ev.stopPropagation(); saveState(); boxes.splice(i,1); if(selectedBoxIndex===i) selectedBoxIndex=-1; else if(selectedBoxIndex>i) selectedBoxIndex--; updateBoxList(); scheduleDraw(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); };
+        del.onclick=(ev)=>{ ev.stopPropagation(); saveState(); boxes.splice(i,1); if(selectedBoxIndex===i) selectedBoxIndex=-1; else if(selectedBoxIndex>i) selectedBoxIndex--; updateBoxList(); scheduleDraw(); commitEdit(); };
         it.appendChild(sp); it.appendChild(del); it.onclick=()=>{ selectedBoxIndex=i; updateBoxList(); scheduleDraw(); };
         list.appendChild(it);
       });
@@ -864,28 +1047,37 @@ Generated: ${new Date().toISOString()}`;
     }
 
     async function chooseFolder(){
-      if (location.protocol !== 'https:' && location.hostname !== 'localhost'){
-        alert('Folder access requires HTTPS or http://localhost.');
+      if (!window.isSecureContext){
+        alert('Folder access needs a secure page: open index.html from disk, from an https:// address or from http://localhost.');
         return;
       }
       if (typeof window.showDirectoryPicker !== 'function'){
         alert('Your browser does not support showDirectoryPicker. Use Chrome/Edge 86+.');
         return;
       }
+      if(!(await confirmLeaveCurrent())) return;
       try{
-        const dirHandle = await window.showDirectoryPicker({id:'yolo-editor-root', mode:'read'});
+        // Read-write, so corrections are saved straight back into the folder.
+        const dirHandle = await window.showDirectoryPicker({id:'yolo-editor-root', mode:'readwrite'});
         const ok = await verifyPermission(dirHandle, true);
         if(!ok){ alert('Permission denied for the selected folder.'); return; }
-        await loadDatasetFromDirectory(dirHandle);
+        await openFolder(dirHandle);
       }catch(err){
         if (err?.name === 'AbortError') return;
         alert('Unable to open folder: ' + (err?.message || err));
       }
     }
+    async function openFolder(dirHandle){
+      const writable = await verifyPermission(dirHandle, false);
+      await loadDatasetFromDirectory(dirHandle, writable);
+    }
 
-    async function loadDatasetFromDirectory(rootHandle){
+    async function loadDatasetFromDirectory(rootHandle, writable=false){
       showLoading('Loading Dataset...','Scanning structure...');
+      folder=null; resetSaveState();
       imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear();
+      const loadWarnings=[];
+      let statusEntries=new Map();
 
       let imagesHandle, labelsHandle=null, classFileHandle=null, statusJsonHandle=null, deletedTxtHandle=null, labeledTxtHandle=null;
 
@@ -901,8 +1093,9 @@ Generated: ${new Date().toISOString()}`;
 
       try{
         if(statusJsonHandle){
-          const file=await statusJsonHandle.getFile(); const arr=JSON.parse(await file.text());
-          if(Array.isArray(arr)) arr.forEach(r=>{ if(r?.name&&r?.status) statusMap.set(norm(r.name), r.status) });
+          const r=YoloCore.parseStatusJson(await (await statusJsonHandle.getFile()).text());
+          if(r.error) loadWarnings.push(`${r.error}. It will be rewritten from the statuses shown here when you change one.`);
+          statusEntries=r.entries; statusEntries.forEach((st,n)=>statusMap.set(norm(n), st));
         } else {
           if(deletedTxtHandle){ const t=await (await deletedTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'deleted')); }
           if(labeledTxtHandle){ const t=await (await labeledTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(n,'labeled')); }
@@ -911,9 +1104,10 @@ Generated: ${new Date().toISOString()}`;
       }catch{}
 
       const deleted=getDeletedSet();
-      const entries=[];
+      const entries=[], allImageNames=[];
       for await (const [name,handle] of imagesHandle.entries()){
         if(handle.kind==='file' && /\.(png|jpe?g|bmp|webp)$/i.test(name)){
+          allImageNames.push(name);
           if(!deleted.has(norm(name))) entries.push({name,handle});
         }
       }
@@ -935,19 +1129,29 @@ Generated: ${new Date().toISOString()}`;
         }catch{}
       }
 
+      const nameSet=new Set(allImageNames);
+      const extraStatus=new Map([...statusEntries].filter(([n])=>!nameSet.has(n)));
+      folder={root:rootHandle, name:rootHandle.name, writable, labelsDir:labelsHandle, imageNames:allImageNames, labelFiles:new Map(), extraStatus};
+
       if(labelsHandle){
         const map=new Map();
         for await (const [lname,lhandle] of labelsHandle.entries()){
           if(lhandle.kind==='file' && /\.txt$/i.test(lname)){
-            const file=await lhandle.getFile(); map.set(lname.replace(/\.txt$/i,''), await file.text());
+            const file=await lhandle.getFile(); map.set(lname.replace(/\.txt$/i,''), {text:await file.text(), fileName:lname});
           }
         }
         for(let i=0;i<imageMetadata.length;i++){
-          const base=imageMetadata[i].name.replace(/\.[^/.]+$/,'');
+          const name=imageMetadata[i].name, base=name.replace(/\.[^/.]+$/,'');
           if(map.has(base)){
-            const parsed=parseLabelFile(map.get(base));
-            labels[i]=parsed;
-            if(parsed.length>0) setStatus(imageMetadata[i].name,'labeled');
+            const {text,fileName}=map.get(base), parsed=YoloCore.parseLabelText(text);
+            labels[i]=parsed.boxes.map(({line,...b})=>b);
+            folder.labelFiles.set(name,fileName);
+            imageMetadata[i].labelFile=fileName; imageMetadata[i].matchStrategy='exact';
+            // What is on disk, in the form Yoloble would write it; a file with
+            // unreadable lines keeps its raw text so the next edit rewrites it.
+            save.diskText.set(name, parsed.bad.length ? text : YoloCore.serializeLabels(labels[i]));
+            if(parsed.bad.length) loadWarnings.push(`Labels/${fileName}: ${parsed.bad.length} unreadable line(s), e.g. line ${parsed.bad[0].line+1} (${parsed.bad[0].reason}).`);
+            if(labels[i].length>0) setStatus(name,'labeled',{user:false});
           }
         }
       }
@@ -956,7 +1160,10 @@ Generated: ${new Date().toISOString()}`;
       buildLabelDatabase();
       await loadImageAtIndex(0);
       updateLoading(100,'Complete');
-      setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats(); },200);
+      updateSaveIndicator();
+      if(!writable) showSaveBanner();
+      setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats();
+        if(loadWarnings.length) alert('Opened with warnings:\n\n'+loadWarnings.slice(0,12).join('\n')+(loadWarnings.length>12?`\n…and ${loadWarnings.length-12} more`:'')); },200);
     }
 
     function cleanupMemory(){
@@ -973,7 +1180,9 @@ Generated: ${new Date().toISOString()}`;
       setupCanvas(); setupClassSelector(); setupEventListeners(); setupClassFilterGrid();
       updateUI(); updateDatabaseStatus();
       setInterval(cleanupMemory,30000);
-      window.addEventListener('beforeunload',()=>{ imageCache.clear(); imageMetadata=[]; labels=[]; filterCache.clear(); });
+      window.addEventListener('beforeunload',e=>{ if(hasUnsavedWork()){ flushSaves(); e.preventDefault(); e.returnValue=''; } });
+      document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='hidden') flushSaves(); });
+      updateSaveIndicator();
     }
 
     function setupEventListeners(){
@@ -996,10 +1205,10 @@ Generated: ${new Date().toISOString()}`;
 
     function onKeyDown(e){
       if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.type==='checkbox') return;
-      if(e.key==='Delete'||e.key==='Backspace'){ if(selectedBoxIndex!==-1){ saveState(); boxes.splice(selectedBoxIndex,1); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); } }
+      if(e.key==='Delete'||e.key==='Backspace'){ if(selectedBoxIndex!==-1){ saveState(); boxes.splice(selectedBoxIndex,1); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); commitEdit(); } }
       else if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A'){ e.preventDefault(); previousImage(); }
       else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D'){ e.preventDefault(); nextImage(); }
-      else if(e.key>='0'&&e.key<='9'){ const ci=parseInt(e.key); if(ci<CLASS_NAMES.length){ if(selectedBoxIndex!==-1){ boxes[selectedBoxIndex].cls=ci; updateBoxList(); scheduleDraw(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); } else setCurrentClass(ci); } }
+      else if(e.key>='0'&&e.key<='9'){ const ci=parseInt(e.key); if(ci<CLASS_NAMES.length){ if(selectedBoxIndex!==-1){ boxes[selectedBoxIndex].cls=ci; updateBoxList(); scheduleDraw(); commitEdit(); } else setCurrentClass(ci); } }
       else if(e.key==='Tab'){ e.preventDefault(); currentClass = e.shiftKey ? (currentClass-1+CLASS_NAMES.length)%CLASS_NAMES.length : (currentClass+1)%CLASS_NAMES.length; setCurrentClass(currentClass); }
       else if(e.key==='v'||e.key==='V'){ toggleBoxes(); }
       else if(e.key==='f'||e.key==='F'){ fitToScreen(); }
@@ -1058,8 +1267,8 @@ Generated: ${new Date().toISOString()}`;
       if(dragMode==='create'){
         const s=screenToImage(dragStart.x,dragStart.y), c=screenToImage(p.x,p.y);
         const x1=Math.min(s.x,c.x), y1=Math.min(s.y,c.y), x2=Math.max(s.x,c.x), y2=Math.max(s.y,c.y);
-        if(x2-x1>5 && y2-y1>5){ saveState(); boxes.push(imageToNorm(x1,y1,x2,y2)); selectedBoxIndex=boxes.length-1; updateBoxList(); saveCurrentLabels(); updateImageInDatabase(currentImageIndex); }
-      } else if(dragMode==='move'||dragMode==='resize'){ saveCurrentLabels(); updateImageInDatabase(currentImageIndex); }
+        if(x2-x1>5 && y2-y1>5){ saveState(); boxes.push(imageToNorm(x1,y1,x2,y2)); selectedBoxIndex=boxes.length-1; updateBoxList(); commitEdit(); }
+      } else if(dragMode==='move'||dragMode==='resize'){ commitEdit(); }
       isDragging=false; dragMode=null; resizeHandle=null; canvas.style.cursor='crosshair'; scheduleDraw();
     }
     function onWheel(e){ e.preventDefault(); const p=getCanvasPos(e); zoomAt(p.x,p.y, e.deltaY>0?0.9:1.1); }
@@ -1076,8 +1285,15 @@ Generated: ${new Date().toISOString()}`;
       exportStats: ()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buildStatsText()],{type:'text/plain'})); a.download='dataset_statistics.txt'; a.click(); },
       downloadBundle,
       showDetailedDebug, deleteCurrentImage,
-      chooseFolder,
+      chooseFolder, grantWriteAccess, retrySave,
       cancelLoading,
+      // For the automated tests (tests/e2e.test.js); not used by the page.
+      _openFolder: openFolder, _flushSaves: ()=>flushSaves(),
+      _loadReadOnlyForTests: h=>loadDatasetFromDirectory(h,false),
+      _toClient: pts=>{ updateRenderState(); const r=canvas.getBoundingClientRect(); return pts.map(p=>{ const s=imageToScreen(p.x*RS.imgW,p.y*RS.imgH); return {x:r.left+s.x, y:r.top+s.y}; }); },
+      _snapshot: ()=>({ index:currentImageIndex, name:imageMetadata[currentImageIndex]?.name??null, count:imageMetadata.length,
+        boxes:JSON.parse(JSON.stringify(boxes)), selected:selectedBoxIndex, currentClass,
+        status:Object.fromEntries(statusMap), unsaved:unsavedCount(), saveState:$("saveState").textContent, saveError:save.error?String(save.error.message||save.error):null }),
       markNoLabel
     };
   })();

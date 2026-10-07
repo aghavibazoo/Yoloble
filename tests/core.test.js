@@ -47,3 +47,24 @@ test('labelFileNameFor swaps only the last extension', () => {
   assert.equal(C.labelFileNameFor('site__vid__f000123.jpg'), 'site__vid__f000123.txt');
   assert.equal(C.labelFileNameFor('a.b.JPEG'), 'a.b.txt');
 });
+
+test('isSafeFileName refuses paths and reserved names', () => {
+  for (const ok of ['a.txt', 'site__vid__f000001.txt', 'image_status.json', 'with space.txt']) assert.equal(C.isSafeFileName(ok), true, ok);
+  for (const bad of ['', '.', '..', '../x.txt', 'a/b.txt', 'a\b.txt', 'c:x.txt', 'a\u0000.txt', 'x'.repeat(256)]) assert.equal(C.isSafeFileName(bad), false, JSON.stringify(bad));
+});
+
+test('parseStatusJson keeps exact names and skips malformed rows', () => {
+  const r = C.parseStatusJson('[{"name":"A.jpg","status":"reviewed"},{"name":"b.jpg"},null,{"name":"c.jpg","status":"deleted"}]');
+  assert.equal(r.error, null);
+  assert.deepEqual([...r.entries], [['A.jpg', 'reviewed'], ['c.jpg', 'deleted']]);
+  assert.match(C.parseStatusJson('{').error, /not valid JSON/);
+  assert.match(C.parseStatusJson('{}').error, /not a JSON array/);
+});
+
+test('serializeStatusJson writes one sorted entry per name', () => {
+  const st = { 'b.jpg': 'reviewed', 'a.jpg': 'deleted' };
+  const text = C.serializeStatusJson(['b.jpg', 'a.jpg', 'c.jpg', 'a.jpg'], n => st[n]);
+  assert.deepEqual(JSON.parse(text), [
+    { name: 'a.jpg', status: 'deleted' }, { name: 'b.jpg', status: 'reviewed' }, { name: 'c.jpg', status: 'unlabeled' }]);
+  assert.ok(text.endsWith(']\n'));
+});
