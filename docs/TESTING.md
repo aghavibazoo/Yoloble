@@ -190,3 +190,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] NEW-2: with a locked label file, edit that image and press **Space** (not reviewed on disk), go back, **Ctrl+Z**, unlock: `image_status.json` then says `reviewed`.
 - [ ] NEW-3: with a locked label file, edit that image and press **Space**, then **Download Bundle**: in the ZIP the image is `reviewed` in `lists/image_status.json` and its label file has the edit.
 - [ ] NEW-4: review an image, then lock its label file, click the green pill (not reviewed) and edit: `image_status.json` stops saying `reviewed` at once, although the label edit cannot be saved.
+- [ ] NEW-5: remove an image from `image_status.json`, lock its label file, edit and review it, review another image: the file lists the first one as `unlabeled`.

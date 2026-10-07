@@ -663,4 +663,17 @@ test('NEW-4: un-reviewing is written at once, even while the image\'s label file
   assert.notEqual(await statusOnDisk(b), 'reviewed', 'the folder must not keep vouching for these labels');
 }));
 
+test('NEW-5: a held-back review of an image the status file does not list is written as unlabeled', { skip }, () => withBrowser(async b => {
+  const files = ORIGINAL();
+  files['image_status.json'] = Buffer.from(JSON.stringify(JSON.parse(files['image_status.json']).filter(r => r.name !== `${IMG0}.jpg`)));
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  await lockLabel(b);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await b.key(' '); await loaded(b, 1);
+  await b.key(' ', { shift: true }); await loaded(b, 2);       // another status change makes the file be written
+  await sleep(1500);
+  assert.equal(await statusOnDisk(b), 'unlabeled');
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

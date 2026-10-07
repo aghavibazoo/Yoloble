@@ -1184,7 +1184,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const statusForFile=n=>{
       if(folder.extraStatus.has(n)) return folder.extraStatus.get(n);
       const mem=statusMap.get(norm(n)) ?? 'unlabeled';
-      if(YoloCore.isDecided(mem) && labelUnsaved(n)) return save.diskStatus.get(n) ?? mem;
+      if(YoloCore.isDecided(mem) && labelUnsaved(n)) return save.diskStatus.get(n) ?? 'unlabeled'; // no entry on disk: not reviewed
       return mem;
     };
     function statusFileText(){ return YoloCore.serializeStatusJson([...folder.imageNames, ...folder.extraStatus.keys()], statusForFile); }
