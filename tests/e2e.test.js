@@ -182,7 +182,7 @@ test('classes: number keys, Shift+number for 10+, type-to-search picker, name la
   assert.equal(s.boxes[0].cls, 1);
   assert.ok(!(await b.evaluate(`document.getElementById('classPicker').classList.contains('show')`)));
   // Undo goes back to class 8.
-  await b.evaluate('YOLOUI.undo()');
+  await b.key('z', { ctrl: true });
   assert.equal((await snap(b)).boxes[0].cls, 8);
   // More than ten classes: add two, Shift+0 picks class 10 for new boxes.
   await b.evaluate('YOLOUI.addNewClass(); YOLOUI.addNewClass()');
@@ -203,6 +203,23 @@ test('classes: number keys, Shift+number for 10+, type-to-search picker, name la
   // Removing classes is refused while a folder is open.
   await b.evaluate('YOLOUI._removeClass(0)');
   assert.match(b.dialogs.at(-1), /cannot be removed or reset while a folder is open/);
+}));
+
+test('undo is per image: Ctrl+Z on another image never brings the previous image\'s boxes', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await b.key('d');
+  await b.waitFor('YOLOUI._snapshot().index === 1 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  const before = (await snap(b)).boxes.length;
+  assert.equal(await b.evaluate(`document.getElementById('undoBtn').disabled`), true);
+  await b.key('z', { ctrl: true });
+  assert.equal((await snap(b)).boxes.length, before);
+  await b.key('a');
+  await b.waitFor('YOLOUI._snapshot().index === 0 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  assert.equal((await snap(b)).boxes.length, 4);
+  await b.key('z', { ctrl: true });
+  assert.equal((await snap(b)).boxes.length, 3, 'undo still works on the image it belongs to');
 }));
 
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
@@ -258,7 +275,7 @@ test('a crash mid-round loses nothing: reopening resumes on the same image and r
   await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
   await settle(b);
   for (let i = 0; i < 3; i++) await b.key('d');
-  await b.waitFor(`YOLOUI._snapshot().name === '${IMG3}.jpg'`);
+  await b.waitFor(`YOLOUI._snapshot().name === '${IMG3}.jpg' && YOLOUI._snapshot().owner === '${IMG3}.jpg'`);
   await b.evaluate(`FileSystemFileHandle.prototype.createWritable = function () { return Promise.reject(new DOMException('simulated', 'InvalidStateError')); };`);
   await drag(b, { x: 0.05, y: 0.05 }, { x: 0.15, y: 0.12 });
   await b.waitFor('YOLOUI._snapshot().saveError !== null');

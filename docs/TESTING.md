@@ -24,6 +24,7 @@ Tick each line. Each line was added with the change it covers.
 
 - [ ] Open a folder that has `Images/`, `Labels/` and `classes.txt`; boxes from existing label files show on the right images, and **Download Bundle** writes label files whose lines read `<class> <x> <y> <w> <h>` with six decimals.
 - [ ] Delete an image: the next image appears with its own picture and its own boxes (not the deleted picture).
+- [ ] Draw a box, go to the next image and press **Ctrl+Z**: nothing happens there (the **Undo** button is greyed out). Go back: **Ctrl+Z** removes the box you drew.
 - [ ] Hold **D** down (key repeat) to race through the images, then come back: every image still shows its own boxes and no label file changed.
 
 ### Sample round
