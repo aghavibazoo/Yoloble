@@ -988,8 +988,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // ----- one writing window per folder -----
     // 1. The window that works on a folder holds the Web Lock
     //    "yoloble-folder:<key>" for as long as it does (key: the folder's name,
-    //    or name#2, name#3... for other folders with the same name) and keeps a
-    //    token for it in localStorage.
+    //    or name#2, name#3... for other folders with the same name), and notes
+    //    the lock manager's clientId for itself.
     // 2. A window opening a folder asks the others over a BroadcastChannel;
     //    owners of a folder with that name answer 'mine' (the same folder,
     //    by isSameEntry) or 'notmine' with their key.
@@ -997,11 +997,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     //    its lock is free, the window owns the folder. If it is held but its
     //    owner did not answer (frozen in the background, blocked by a dialog),
     //    the folder opens read-only, with Check again and Take over.
-    // 4. Take over steals the lock. The old window sees the lock lost (or the
-    //    token changed, checked before every write) and becomes read-only.
+    // 4. Take over steals the lock. Before every write a window asks the lock
+    //    manager whether it still holds the lock under its own clientId; the old
+    //    window gets 'no' (even when a save timer fires the moment it thaws,
+    //    before it has handled the loss) and becomes read-only without writing.
     // Claims for one name run one at a time (lock "yoloble-claim:<name>").
     const CLAIM_WAIT_MS=400;
-    let owned=null; // {root, key, token, release}
+    let owned=null; // {root, key, clientId, release}
     const folderChannel = typeof BroadcastChannel==='function' ? new BroadcastChannel('yoloble-folders') : null;
     folderChannel?.addEventListener('message', async ev=>{
       const m=ev.data;
@@ -1009,41 +1011,43 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       const same=await sameEntry(owned.root, m.handle);
       folderChannel.postMessage({type:same?'mine':'notmine', id:m.id, key:owned.key});
     });
-    const tokenKey=k=>'yoloble-owner:'+k;
+    const lockName=k=>'yoloble-folder:'+k;
     function releaseFolderLock(){
       if(!owned) return;
       const o=owned; owned=null;
-      try{ if(o.token && localStorage.getItem(tokenKey(o.key))===o.token) localStorage.removeItem(tokenKey(o.key)); }
-      catch(e){ console.warn('Ownership token not removed',e); }
       o.release?.();
     }
     // Resolves true when the folder lock `key` is this window's (held until
     // released or stolen by another window's Take over).
     function holdLock(root,key,steal=false){
-      if(!navigator.locks){ owned={root,key,token:null}; return Promise.resolve(true); }
+      if(!navigator.locks){ owned={root,key,clientId:null}; return Promise.resolve(true); }
       return new Promise(res=>{
-        const token=`${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
         let mine=null;
-        navigator.locks.request('yoloble-folder:'+key, steal?{steal:true}:{ifAvailable:true}, lock=>{
+        navigator.locks.request(lockName(key), steal?{steal:true}:{ifAvailable:true}, async lock=>{
           if(!lock){ res(false); return; }
-          mine={root,key,token,release:null}; owned=mine;
-          try{ localStorage.setItem(tokenKey(key),token); }catch(e){ console.warn('Ownership token not stored',e); }
+          mine={root,key,clientId:null,release:null};
+          const held=new Promise(r=>{ mine.release=r; });
+          try{ mine.clientId=(await navigator.locks.query()).held.find(h=>h.name===lockName(key))?.clientId ?? null; }
+          catch(e){ console.warn('Lock manager not queryable',e); }
+          owned=mine;
           res(true);
-          return new Promise(r=>{ mine.release=r; });
+          return held;
         }).catch(e=>{
           if(mine && owned===mine){ console.warn('Folder lock lost',e); owned=null; lostOwnership(); }
           res(false);
         });
       });
     }
-    // Is this still the writing window of the open folder? Checked before every write.
-    function stillOwner(){
+    // Is this still the writing window of the open folder? Asked of the lock
+    // manager before every write; any doubt means no.
+    async function stillOwner(){
       if(!folder) return false;
       if(!navigator.locks || !folderChannel) return true;
       if(!owned || owned.root!==folder.root) return false;
-      try{ const t=localStorage.getItem(tokenKey(owned.key)); if(t!==null && t!==owned.token) return false; }
-      catch(e){ console.warn('Ownership token not readable; relying on the lock',e); }
-      return true;
+      try{
+        const h=(await navigator.locks.query()).held.find(x=>x.name===lockName(owned.key));
+        return !!h && h.clientId===owned.clientId && owned.clientId!==null;
+      }catch(e){ console.warn('Lock manager not queryable; not writing',e); return false; }
     }
     function lostOwnership(){
       if(!folder || folder.takenOver) return;
@@ -1055,7 +1059,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // {owner:true} or {owner:false, reason:'same'|'unresponsive', key}
     async function claimFolder(handle){
       releaseFolderLock();
-      if(!folderChannel || !navigator.locks){ owned={root:handle, key:handle.name, token:null}; return {owner:true}; }
+      if(!folderChannel || !navigator.locks){ owned={root:handle, key:handle.name, clientId:null}; return {owner:true}; }
       const ask=async()=>{
         const id=`${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
         let same=false; const notMine=new Set();
@@ -1133,11 +1137,17 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     async function writeTextFile(dir,fileName,data){
       if(!YoloCore.isSafeFileName(fileName)) throw new Error(`refusing to write unsafe file name "${fileName}"`);
-      if(!stillOwner()){ lostOwnership(); throw new Error('another Yoloble window has taken over this folder'); }
+      if(!(await stillOwner())){ lostOwnership(); throw new Error('another Yoloble window has taken over this folder'); }
       const fh=await dir.getFileHandle(fileName,{create:true});
       // createWritable() writes to a temporary file and swaps it into place on close().
       const w=await fh.createWritable({keepExistingData:false});
-      try{ await w.write(data); await w.close(); }
+      try{
+        await w.write(data);
+        // Asked again just before the swap: the tab may have been frozen since the
+        // first check and the folder taken over meanwhile. Not ours: nothing is written.
+        if(!(await stillOwner())){ lostOwnership(); throw new Error('another Yoloble window has taken over this folder'); }
+        await w.close();
+      }
       catch(e){ try{ await w.abort(); }catch(e2){ console.warn('Aborting a failed write failed too',e2); } throw e; }
       const back=new Uint8Array(await (await fh.getFile()).arrayBuffer());
       const want=typeof data==='string' ? new TextEncoder().encode(data) : data;
@@ -2908,7 +2918,7 @@ Generated: ${new Date().toISOString()}`;
       _loadReadOnlyForTests: h=>loadDatasetFromDirectory(h,false), _issues: ()=>currentIssues().map(({code,box,severity,fix})=>({code,box,severity,fix})), _gotoIndex: i=>gotoName(imageMetadata[i]?.name),
       _toClient: pts=>{ updateRenderState(); const r=canvas.getBoundingClientRect(); return pts.map(p=>{ const s=imageToScreen(p.x*RS.imgW,p.y*RS.imgH); return {x:r.left+s.x, y:r.top+s.y}; }); },
       _snapshot: ()=>({ index:currentImageIndex, name:imageMetadata[currentImageIndex]?.name??null, count:imageMetadata.length,
-        boxes:JSON.parse(JSON.stringify(boxes)), owner:boxesOwner, selected:selectedBoxIndex, currentClass,
+        boxes:JSON.parse(JSON.stringify(boxes)), owner:boxesOwner, lockClient:owned?.clientId ?? null, lockKey:owned?.key ?? null, selected:selectedBoxIndex, currentClass,
         status:Object.fromEntries(statusMap), unsaved:unsavedCount(), saveState:$("saveState").textContent, saveError:save.error?String(save.error.message||save.error):null }),
       markNoLabel
     };

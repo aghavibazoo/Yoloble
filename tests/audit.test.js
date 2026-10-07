@@ -676,4 +676,27 @@ test('NEW-5: a held-back review of an image the status file does not list is wri
   assert.equal(await statusOnDisk(b), 'unlabeled');
 }));
 
+// Slow (about a minute), like the other frozen-owner test.
+test('NEW-1: an old window thawing after a take-over writes nothing, even a save it had queued', { skip }, () => withBrowser(async a => {
+  await putFolder(a, 'round', ORIGINAL());
+  await openRound(a);
+  await settle(a); await a.evaluate('YOLOUI._saveSession()'); await sleep(1000);
+  await drag(a, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });              // queued in A (400 ms timer)
+  await a.send('Page.setWebLifecycleState', { state: 'frozen' });       // frozen before the timer fires
+  const b = await secondTab(a);
+  await openRound(b);
+  await b.evaluate('YOLOUI.takeOverFolder()');
+  assert.match((await snap(b)).saveState, /All changes saved/);
+  const before = (await getFolder(b, 'round'))[`Labels/${IMG0}.txt`];
+  await a.send('Page.setWebLifecycleState', { state: 'active' });       // A's timer fires now
+  await sleep(2500);
+  const after = (await getFolder(b, 'round'))[`Labels/${IMG0}.txt`];
+  assert.ok(after.equals(before), 'the old window wrote nothing');
+  assert.match((await snap(a)).saveState, /Taken over/);
+  await b.focus();
+  await drag(b, { x: 0.05, y: 0.05 }, { x: 0.15, y: 0.15 });
+  await settle(b);
+  assert.equal(lineCount((await getFolder(b, 'round'))[`Labels/${IMG0}.txt`]), 4, 'the new owner saves');
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
