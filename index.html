@@ -24,8 +24,6 @@
     .section{margin-bottom:25px}
     .section h3{margin-bottom:10px;color:#4a90e2;font-size:16px}
     .class-selector{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:15px}
-    .class-btn{background:#444;color:#fff;border:none;padding:8px;border-radius:4px;cursor:pointer;font-size:12px}
-    .class-btn.active{background:#4a90e2}
     .box-list{max-height:200px;overflow-y:auto;border:1px solid #444;border-radius:4px}
     .box-item{padding:8px 12px;border-bottom:1px solid #444;display:flex;justify-content:space-between;align-items:center}
     .box-item.selected{background:#4a90e2}
@@ -83,6 +81,20 @@
     .sidebar-toggle{position:absolute;right:0;top:50%;transform:translateY(-50%);z-index:10;background:#4a90e2;color:#fff;border:none;padding:8px 4px;cursor:pointer;font-size:14px;border-radius:4px 0 0 4px;opacity:.7;transition:opacity .2s,right .3s ease}
     .sidebar-toggle:hover{opacity:1}
     .sidebar-toggle.collapsed{right:0}
+    .class-list-pick{display:flex;flex-direction:column;gap:2px;max-height:300px;overflow-y:auto}
+    .class-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:4px;cursor:pointer;background:#3a3a3a;font-size:13px;border:2px solid transparent}
+    .class-row:hover{background:#474747}
+    .class-row.active{border-color:#fff;background:#505050}
+    .class-row.hl{border-color:#4a90e2;background:#2f4b6b}
+    .swatch{display:inline-block;width:14px;height:14px;border-radius:3px;flex:none;border:1px solid rgba(0,0,0,.4)}
+    .class-row .key{margin-left:auto;font-size:11px;color:#aaa;font-family:Consolas,monospace}
+    .class-search{width:100%;margin-bottom:8px;background:#444;border:1px solid #555;color:#fff;padding:7px;border-radius:4px;font-size:13px}
+    .class-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:12px;background:#3a3a3a;cursor:pointer;font-size:13px;border:none;color:#fff}
+    .class-chip:hover{background:#4a4a4a}
+    .toggle-inline{font-size:13px;display:inline-flex;align-items:center;gap:4px;color:#ddd}
+    .picker{position:absolute;left:50%;top:40px;transform:translateX(-50%);z-index:50;background:#2d2d2d;border:1px solid #666;border-radius:6px;box-shadow:0 8px 30px rgba(0,0,0,.6);width:340px;padding:10px;display:none}
+    .picker.show{display:block}
+    .picker .title{font-size:12px;color:#bbb;margin-bottom:6px}
     .save-state{font-size:13px;padding:4px 10px;border-radius:12px;background:#444;color:#ddd;white-space:nowrap}
     .save-state.saved{background:#1e5631;color:#c8f7d0}
     .save-state.pending,.save-state.saving{background:#6b5a12;color:#ffe9a3}
@@ -121,6 +133,8 @@
       <div class="left-controls">
         <button class="btn btn-danger" id="deleteImgBtn" onclick="YOLOUI.deleteCurrentImage()">Delete Image</button>
         <button class="btn btn-plain" id="noLabelBtn" onclick="YOLOUI.markNoLabel()">No Label</button>
+        <button class="class-chip" id="classChip" onclick="YOLOUI.openClassPicker()" title="Class for new boxes. Press C to search classes; with a box selected, C changes that box."></button>
+        <label class="toggle-inline"><input type="checkbox" id="showClassNames" checked onchange="YOLOUI.toggleClassNames()"> Class names (L)</label>
       </div>
     </div>
   </div>
@@ -141,10 +155,22 @@
     <div class="canvas-container">
       <div class="drag-overlay" id="dragOverlay">Drop images or lists here</div>
       <canvas id="canvas"></canvas>
+      <div class="picker" id="classPicker">
+        <div class="title" id="classPickerTitle"></div>
+        <input class="class-search" id="classPickerInput" placeholder="Type a class name or ID, Enter to pick" autocomplete="off" spellcheck="false">
+        <div class="class-list-pick" id="classPickerList"></div>
+      </div>
       <button class="sidebar-toggle" id="sidebarToggle" onclick="YOLOUI.toggleSidebar()" title="Toggle sidebar">◀</button>
     </div>
 
     <div class="sidebar" id="sidebar">
+      <div class="section">
+        <h3>Classes</h3>
+        <input class="class-search" id="classSearch" placeholder="Search classes…" autocomplete="off" spellcheck="false" oninput="YOLOUI._renderClassList()">
+        <div class="class-list-pick" id="classSelector"></div>
+        <div style="font-size:11px;color:#aaa;margin-top:6px">Keys 0–9, Shift+0–9 for 10–19, C to search. With a box selected they change that box.</div>
+      </div>
+
       <div class="section">
         <h3>Database Status</h3>
         <div class="performance-section">
@@ -224,11 +250,6 @@
           <button class="btn" onclick="YOLOUI.goToImage()">Go</button>
         </div>
         <div class="quick-nav" id="quickNav"></div>
-      </div>
-
-      <div class="section">
-        <h3>Current Class</h3>
-        <div class="class-selector" id="classSelector"></div>
       </div>
 
       <div class="section">
@@ -373,8 +394,44 @@
       return {labels, statuses, conflicts:[...new Set(conflicts)]};
     }
 
+    // ----- classes -----
+    // Twenty colours chosen to stay apart from each other and readable on road
+    // scenes; further classes get evenly spread hues.
+    const PALETTE=["#e6194b","#3cb44b","#ffe119","#4363d8","#f58231","#42d4f4","#f032e6","#bfef45","#fabed4","#469990",
+                   "#dcbeff","#9a6324","#fffac8","#800000","#aaffc3","#808000","#ffd8b1","#000075","#a9a9a9","#911eb4"];
+    function classColor(i){ return PALETTE[i] || `hsl(${Math.round((i*137.508)%360)},75%,60%)`; }
+    // Black or white text, whichever reads better on a #rrggbb background.
+    function textColorOn(hex){
+      const m=/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex); if(!m) return '#000';
+      const [r,g,b]=m.slice(1).map(h=>parseInt(h,16)/255).map(c=>c<=0.03928?c/12.92:((c+0.055)/1.055)**2.4);
+      return 0.2126*r+0.7152*g+0.0722*b > 0.25 ? '#000' : '#fff';
+    }
+    // Keys 0-9 pick classes 0-9; Shift+0-9 picks 10-19. Uses KeyboardEvent.code,
+    // so it works on any keyboard layout. Returns -1 for other keys.
+    function classForKey(code, shift){
+      const m=/^(?:Digit|Numpad)(\d)$/.exec(String(code||''));
+      return m ? Number(m[1])+(shift?10:0) : -1;
+    }
+    // Class indexes matching a typed query, best first: the class ID, then the
+    // whole name, a name prefix, a word prefix, a substring, and finally every
+    // typed word starting some word of the name ("3 bus" finds "3ax Bus").
+    function searchClasses(names, query){
+      const q=String(query||'').trim().toLowerCase();
+      if(!q) return names.map((_,i)=>i);
+      const words=s=>s.split(/[\s_\-+/]+/).filter(Boolean);
+      const qw=words(q), hits=[];
+      names.forEach((name,i)=>{
+        const s=String(name).toLowerCase(), w=words(s);
+        const score = String(i)===q ? 0 : s===q ? 1 : s.startsWith(q) ? 2 : w.some(x=>x.startsWith(q)) ? 3 :
+                      s.includes(q) ? 4 : qw.every(x=>w.some(y=>y.startsWith(x))) ? 5 : -1;
+        if(score>=0) hits.push([score,i]);
+      });
+      return hits.sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(h=>h[1]);
+    }
+
     return { splitLines, parseLabelText, serializeLabels, corners, iou, labelFileNameFor, isSafeFileName,
-             parseStatusJson, serializeStatusJson, canonicalLabelText, planRecovery };
+             parseStatusJson, serializeStatusJson, canonicalLabelText, planRecovery,
+             PALETTE, classColor, textColorOn, classForKey, searchClasses };
   })();
   if(typeof module!=='undefined' && module.exports) module.exports=YoloCore;
   </script>
@@ -389,9 +446,9 @@
     // ----- constants / state -----
     const HANDLE_SIZE=8, MAX_UNDO=50;
     let CLASS_NAMES=["Class 0","Class 1","Class 2","Class 3","Class 4","Class 5","Class 6","Class 7","Class 8"];
-    let COLORS=["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb","#32cd32","#ff1493","#00ced1","#ffd700","#dc143c","#9370db","#228b22","#ff4500","#1e90ff","#ff69b4","#00fa9a"];
-    const colorOf=i=>COLORS[i]||`hsl(${(i*137.508)%360},70%,50%)`;
-    const ensureColors=()=>{ while(COLORS.length<CLASS_NAMES.length) COLORS.push(colorOf(COLORS.length)); };
+    const colorOf=YoloCore.classColor;
+    let showClassNames=true;
+    try{ showClassNames=localStorage.getItem('yoloble_show_class_names')!=='0'; }catch{}
 
     let canvas, ctx, viewW=0, viewH=0;
     let zoom=1, panX=0, panY=0;
@@ -779,17 +836,90 @@
       updateZoomLevel(); scheduleDraw();
     }
 
+    const className=i=>CLASS_NAMES[i] ?? `Class ${i}`;
+    const keyHint=i=>i<10?String(i):i<20?`Shift+${i-10}`:'';
+    function classRow(idx,cls=''){
+      const r=document.createElement('div'); r.className='class-row '+cls; r.dataset.cls=idx;
+      const sw=document.createElement('span'); sw.className='swatch'; sw.style.background=colorOf(idx);
+      const nm=document.createElement('span'); nm.textContent=`${idx}: ${className(idx)}`;
+      const k=document.createElement('span'); k.className='key'; k.textContent=keyHint(idx);
+      r.append(sw,nm,k); return r;
+    }
     function setupClassSelector(){
-      const sel=$("classSelector"), filterSel=$("filterClass");
-      sel.innerHTML=''; filterSel.innerHTML='<option value="">Any Class</option>';
-      CLASS_NAMES.forEach((nm,idx)=>{
-        const b=document.createElement('button'); b.className='class-btn'; b.textContent=`${idx}: ${nm}`; b.onclick=()=>setCurrentClass(idx); sel.appendChild(b);
-        const opt=document.createElement('option'); opt.value=idx; opt.textContent=`${idx}: ${nm}`; filterSel.appendChild(opt);
-      });
+      const filterSel=$("filterClass"); filterSel.innerHTML='<option value="">Any Class</option>';
+      CLASS_NAMES.forEach((nm,idx)=>{ const opt=document.createElement('option'); opt.value=idx; opt.textContent=`${idx}: ${nm}`; filterSel.appendChild(opt); });
       updateClassSelector();
     }
-    function updateClassSelector(){ document.querySelectorAll('.class-btn').forEach((b,idx)=> b.classList.toggle('active',idx===currentClass)); }
+    function renderClassList(){
+      const sel=$("classSelector"); sel.innerHTML='';
+      YoloCore.searchClasses(CLASS_NAMES,$("classSearch").value).forEach(idx=>{
+        const r=classRow(idx, idx===currentClass?'active':''); r.onclick=()=>chooseClass(idx); sel.appendChild(r);
+      });
+    }
+    function updateClassSelector(){
+      renderClassList();
+      const chip=$("classChip"); chip.innerHTML='';
+      const sw=document.createElement('span'); sw.className='swatch'; sw.style.background=colorOf(currentClass);
+      chip.append(sw, document.createTextNode(`New boxes: ${className(currentClass)} (C)`));
+    }
     function setCurrentClass(i){ currentClass=i; updateClassSelector(); }
+    // A class choice (key, list or picker) changes the selected box if there is
+    // one, otherwise the class for new boxes.
+    function chooseClass(i){
+      if(!(i>=0 && i<CLASS_NAMES.length)) return;
+      if(selectedBoxIndex!==-1 && boxes[selectedBoxIndex]) setBoxClass(selectedBoxIndex,i);
+      else setCurrentClass(i);
+    }
+    function setBoxClass(bi,cls){
+      if(boxes[bi].cls===cls) return;
+      saveState(); boxes[bi]={...boxes[bi], cls};
+      updateBoxList(); scheduleDraw(); commitEdit();
+    }
+    function toggleClassNames(force){
+      showClassNames = typeof force==='boolean' ? force : !showClassNames;
+      $("showClassNames").checked=showClassNames;
+      try{ localStorage.setItem('yoloble_show_class_names', showClassNames?'1':'0'); }catch{}
+      scheduleDraw();
+    }
+
+    // Type-to-search class picker (C).
+    const picker={results:[], hl:0};
+    function openClassPicker(){
+      if(!CLASS_NAMES.length) return;
+      $("classPickerTitle").textContent = selectedBoxIndex!==-1 && boxes[selectedBoxIndex]
+        ? `Change box ${selectedBoxIndex+1} (now ${className(boxes[selectedBoxIndex].cls)}) to…` : 'Class for new boxes';
+      $("classPicker").classList.add('show');
+      const inp=$("classPickerInput"); inp.value=''; renderPicker(); inp.focus();
+    }
+    function closeClassPicker(){ $("classPicker").classList.remove('show'); if(document.activeElement===$("classPickerInput")) $("classPickerInput").blur(); }
+    function renderPicker(){
+      picker.results=YoloCore.searchClasses(CLASS_NAMES,$("classPickerInput").value);
+      picker.hl=Math.min(picker.hl,Math.max(0,picker.results.length-1));
+      const list=$("classPickerList"); list.innerHTML='';
+      if(!picker.results.length){ list.textContent='No class matches'; return; }
+      picker.results.forEach((idx,k)=>{
+        const r=classRow(idx, k===picker.hl?'hl':'');
+        r.onmousedown=e=>{ e.preventDefault(); closeClassPicker(); chooseClass(idx); };
+        list.appendChild(r);
+      });
+      list.children[picker.hl]?.scrollIntoView({block:'nearest'});
+    }
+    function setupClassPicker(){
+      const inp=$("classPickerInput");
+      inp.addEventListener('input',()=>{ picker.hl=0; renderPicker(); });
+      inp.addEventListener('blur',()=>setTimeout(closeClassPicker,0));
+      $("classSearch").addEventListener('keydown',e=>{
+        if(e.key==='Enter'){ const r=YoloCore.searchClasses(CLASS_NAMES,e.target.value); if(r.length) chooseClass(r[0]); e.target.value=''; renderClassList(); e.target.blur(); }
+        else if(e.key==='Escape'){ e.target.value=''; renderClassList(); e.target.blur(); }
+      });
+      inp.addEventListener('keydown',e=>{
+        e.stopPropagation();
+        if(e.key==='ArrowDown'){ e.preventDefault(); picker.hl=Math.min(picker.hl+1,picker.results.length-1); renderPicker(); }
+        else if(e.key==='ArrowUp'){ e.preventDefault(); picker.hl=Math.max(picker.hl-1,0); renderPicker(); }
+        else if(e.key==='Enter'){ e.preventDefault(); const idx=picker.results[picker.hl]; closeClassPicker(); if(idx!==undefined) chooseClass(idx); }
+        else if(e.key==='Escape'){ e.preventDefault(); closeClassPicker(); }
+      });
+    }
     function toggleSidebar(){ const sb=$("sidebar"), btn=$("sidebarToggle"); sb.classList.toggle('collapsed'); if(sb.classList.contains('collapsed')){ btn.textContent='▶'; btn.title='Show sidebar'; } else { btn.textContent='◀'; btn.title='Hide sidebar'; } setTimeout(()=>{ const resize=new Event('resize'); window.dispatchEvent(resize); },350); }
     function toggleClassEditor(){ const sec=$("classManagementSection"), btn=$("editClassesBtn"); if(sec.style.display==='none'){ sec.style.display='block'; btn.textContent='Hide Classes'; updateClassEditor(); } else { sec.style.display='none'; btn.textContent='Edit Classes'; } }
     function updateClassEditor(){
@@ -798,15 +928,18 @@
       CLASS_NAMES.forEach((nm,idx)=>{
         const el=document.createElement('div'); el.className='class-edit-item';
         el.innerHTML=`<div class="class-number">${idx}</div>
-          <input type="text" class="class-name-input" value="${nm}"
+          <input type="text" class="class-name-input" value="${escapeHtml(nm)}"
                  onchange="YOLOUI._updateClassName(${idx}, this.value)" onblur="YOLOUI._updateClassName(${idx}, this.value)">
           <div class="class-color-indicator" style="background:${colorOf(idx)}"></div>
-          <button class="remove-class-btn" onclick="YOLOUI._removeClass(${idx})" ${CLASS_NAMES.length<=1?'disabled':''}>×</button>`;
+          <button class="remove-class-btn" onclick="YOLOUI._removeClass(${idx})" ${CLASS_NAMES.length<=1||folder?'disabled':''} title="${folder?'Not while a folder is open: its label files use these class IDs':'Remove class'}">×</button>`;
         list.appendChild(el);
       });
     }
-    function addNewClass(){ CLASS_NAMES.push(`Class ${CLASS_NAMES.length}`); ensureColors(); rebuildClassUI(); }
+    const escapeHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    const CLASS_LOCK_MSG='Classes cannot be removed or reset while a folder is open: its label files use these class IDs, and Yoloble never rewrites classes.txt.';
+    function addNewClass(){ CLASS_NAMES.push(`Class ${CLASS_NAMES.length}`); rebuildClassUI(); }
     function removeClass(i){
+      if(folder){ alert(CLASS_LOCK_MSG); return; }
       if(CLASS_NAMES.length<=1){ alert('Cannot remove the last class.'); return }
       if(confirm(`Remove "${CLASS_NAMES[i]}"?`)){
         CLASS_NAMES.splice(i,1);
@@ -817,9 +950,9 @@
     }
     function updateClassName(i,name){ CLASS_NAMES[i]=(name||'').trim()||`Class ${i}`; setupClassSelector(); setupClassFilterGrid(); updateBoxList(); scheduleDraw(); }
     function resetToDefaultClasses(){
+      if(folder){ alert(CLASS_LOCK_MSG); return; }
       if(!confirm('Reset to default classes?')) return;
       CLASS_NAMES=["Class 0","Class 1","Class 2","Class 3","Class 4","Class 5","Class 6","Class 7","Class 8"];
-      COLORS=["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb"];
       rebuildClassUI();
     }
     function rebuildClassUI(){ setupClassSelector(); setupClassFilterGrid(); updateClassEditor(); if(currentClass>=CLASS_NAMES.length) currentClass=0; updateClassSelector(); if(labelDatabase.isBuilt) buildLabelDatabase(); updateUI(); scheduleDraw(); }
@@ -1039,8 +1172,7 @@
         const text=await file.text(); const lines=text.trim().split('\n').filter(l=>l.trim());
         if(!lines.length){ alert('Empty classes file.'); return }
         CLASS_NAMES=lines.map((l,i)=>l.trim()||`Class ${i}`);
-        COLORS=["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb"];
-        ensureColors(); rebuildClassUI(); alert(`Loaded ${CLASS_NAMES.length} classes.`);
+        rebuildClassUI(); alert(`Loaded ${CLASS_NAMES.length} classes.`);
       }catch{ alert('Failed to load classes file.') }
     }
     function parseLabelFile(text){ return YoloCore.parseLabelText(text).boxes.map(({line,...b})=>b); }
@@ -1144,20 +1276,23 @@
         const ib=normToImage(boxes[i]);
         const p1=imageToScreen(ib.x1,ib.y1), p2=imageToScreen(ib.x2,ib.y2);
         const w=p2.x-p1.x, h=p2.y-p1.y; if(w<2||h<2) continue;
-        const sel=i===selectedBoxIndex;
-        ctx.lineWidth=sel?3:2; ctx.setLineDash([]); ctx.strokeStyle=sel?'#ff0000':colorOf(boxes[i].cls);
+        const sel=i===selectedBoxIndex, col=colorOf(boxes[i].cls);
+        if(sel){ ctx.lineWidth=5; ctx.setLineDash([]); ctx.strokeStyle='rgba(0,0,0,.7)'; ctx.strokeRect(p1.x,p1.y,w,h); }
+        ctx.lineWidth=sel?3:2; ctx.setLineDash([]); ctx.strokeStyle=col;
         ctx.strokeRect(p1.x,p1.y,w,h);
-        const name=CLASS_NAMES[boxes[i].cls]||`Class ${boxes[i].cls}`;
-        ctx.font='14px Arial'; ctx.textAlign='left';
-        const tw=ctx.measureText(name).width+8, th=20, lx=p1.x, ly=Math.max(p1.y-th,0);
-        ctx.fillStyle=sel?'#ff0000':colorOf(boxes[i].cls);
-        ctx.fillRect(lx,ly,tw,th); ctx.fillStyle='#fff'; ctx.fillText(name,lx+4,ly+15);
+        if(showClassNames || sel){
+          const name=className(boxes[i].cls);
+          ctx.font='13px system-ui,Segoe UI,Arial'; ctx.textAlign='left';
+          const tw=ctx.measureText(name).width+8, th=18, lx=p1.x, ly=p1.y-th>=0 ? p1.y-th : p1.y;
+          ctx.fillStyle=col; ctx.fillRect(lx,ly,tw,th);
+          ctx.fillStyle=YoloCore.textColorOn(col); ctx.fillText(name,lx+4,ly+13);
+        }
         if(sel){
           const hs=HANDLE_SIZE, hh=hs/2;
           const corners=[{x:p1.x,y:p1.y},{x:p2.x,y:p1.y},{x:p1.x,y:p2.y},{x:p2.x,y:p2.y}];
           corners.forEach(c=>{
             ctx.fillStyle='#fff'; ctx.fillRect(c.x-hh,c.y-hh,hs,hs);
-            ctx.strokeStyle='#ff0000'; ctx.lineWidth=1.5; ctx.setLineDash([]);
+            ctx.strokeStyle='#000'; ctx.lineWidth=1.5; ctx.setLineDash([]);
             ctx.strokeRect(c.x-hh,c.y-hh,hs,hs);
           });
         }
@@ -1172,7 +1307,8 @@
       const list=$("boxList"); list.innerHTML='';
       boxes.forEach((b,i)=>{
         const it=document.createElement('div'); it.className=`box-item ${i===selectedBoxIndex?'selected':''}`;
-        const sp=document.createElement('span'); sp.textContent=`${i+1}. ${CLASS_NAMES[b.cls]}`;
+        const sp=document.createElement('span'); const sw=document.createElement('span'); sw.className='swatch'; sw.style.background=colorOf(b.cls); sw.style.marginRight='6px';
+        sp.append(sw, document.createTextNode(`${i+1}. ${className(b.cls)}`));
         const del=document.createElement('button'); del.className='delete-btn'; del.textContent='Delete';
         del.onclick=(ev)=>{ ev.stopPropagation(); saveState(); boxes.splice(i,1); if(selectedBoxIndex===i) selectedBoxIndex=-1; else if(selectedBoxIndex>i) selectedBoxIndex--; updateBoxList(); scheduleDraw(); commitEdit(); };
         it.appendChild(sp); it.appendChild(del); it.onclick=()=>{ selectedBoxIndex=i; updateBoxList(); scheduleDraw(); };
@@ -1337,7 +1473,7 @@ Generated: ${new Date().toISOString()}`;
         try{
           const file=await classFileHandle.getFile();
           const lines=(await file.text()).trim().split('\n').filter(l=>l.trim());
-          if(lines.length){ CLASS_NAMES=lines.map((l,i)=>l.trim()||`Class ${i}`); COLORS=["#00ff00","#ff0000","#0000ff","#ffff00","#ff00ff","#00ffff","#ffa500","#800080","#ffc0cb"]; ensureColors(); rebuildClassUI(); }
+          if(lines.length){ CLASS_NAMES=lines.map((l,i)=>l.trim()||`Class ${i}`); rebuildClassUI(); }
         }catch{}
       }
 
@@ -1394,7 +1530,8 @@ Generated: ${new Date().toISOString()}`;
 
     function init(){
       storageReady=initStorage();
-      setupCanvas(); setupClassSelector(); setupEventListeners(); setupClassFilterGrid();
+      setupCanvas(); setupClassSelector(); setupEventListeners(); setupClassFilterGrid(); setupClassPicker();
+      $("showClassNames").checked=showClassNames;
       updateUI(); updateDatabaseStatus();
       setInterval(cleanupMemory,30000);
       window.addEventListener('beforeunload',e=>{ if(hasUnsavedWork()){ flushSaves(); e.preventDefault(); e.returnValue=''; } });
@@ -1426,7 +1563,10 @@ Generated: ${new Date().toISOString()}`;
       if(e.key==='Delete'||e.key==='Backspace'){ if(selectedBoxIndex!==-1){ saveState(); boxes.splice(selectedBoxIndex,1); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); commitEdit(); } }
       else if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A'){ e.preventDefault(); previousImage(); }
       else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D'){ e.preventDefault(); nextImage(); }
-      else if(e.key>='0'&&e.key<='9'){ const ci=parseInt(e.key); if(ci<CLASS_NAMES.length){ if(selectedBoxIndex!==-1){ boxes[selectedBoxIndex].cls=ci; updateBoxList(); scheduleDraw(); commitEdit(); } else setCurrentClass(ci); } }
+      else if(!e.ctrlKey && !e.metaKey && !e.altKey && YoloCore.classForKey(e.code,e.shiftKey)>=0){ const ci=YoloCore.classForKey(e.code,e.shiftKey); if(ci<CLASS_NAMES.length){ e.preventDefault(); chooseClass(ci); } }
+      else if((e.key==='c'||e.key==='C') && !e.ctrlKey && !e.metaKey){ e.preventDefault(); openClassPicker(); }
+      else if((e.key==='l'||e.key==='L') && !e.ctrlKey && !e.metaKey){ toggleClassNames(); }
+      else if(e.key==='Escape'){ if(selectedBoxIndex!==-1){ selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); } }
       else if(e.key==='Tab'){ e.preventDefault(); currentClass = e.shiftKey ? (currentClass-1+CLASS_NAMES.length)%CLASS_NAMES.length : (currentClass+1)%CLASS_NAMES.length; setCurrentClass(currentClass); }
       else if(e.key==='v'||e.key==='V'){ toggleBoxes(); }
       else if(e.key==='f'||e.key==='F'){ fitToScreen(); }
@@ -1504,6 +1644,7 @@ Generated: ${new Date().toISOString()}`;
       downloadBundle,
       showDetailedDebug, deleteCurrentImage,
       chooseFolder, grantWriteAccess, retrySave, resumeLastFolder, hideNotice,
+      openClassPicker, toggleClassNames: ()=>toggleClassNames(), _renderClassList: renderClassList,
       cancelLoading,
       // For the automated tests (tests/e2e.test.js); not used by the page.
       _openFolder: openFolder, _flushSaves: ()=>flushSaves(), _saveSession: ()=>saveSessionNow(), _storageReady: ()=>storageReady,

@@ -103,3 +103,38 @@ test('planRecovery with no session or nothing lost is empty', () => {
   assert.deepEqual(C.planRecovery(null, disk), { labels: [], statuses: [], conflicts: [] });
   assert.deepEqual(C.planRecovery({ labels: {}, statuses: {} }, disk), { labels: [], statuses: [], conflicts: [] });
 });
+
+const IRS_CLASSES = ['Car', 'Pickup Truck', 'Van', '2ax Truck', '3ax Truck', '4ax Truck', '5ax+ Truck', '2ax Bus', '3ax Bus'];
+
+test('class colours are distinct for the first twenty classes and defined beyond', () => {
+  const first = Array.from({ length: 20 }, (_, i) => C.classColor(i));
+  assert.equal(new Set(first).size, 20);
+  assert.match(C.classColor(25), /^hsl\(\d+,75%,60%\)$/);
+  assert.equal(C.textColorOn('#ffe119'), '#000');
+  assert.equal(C.textColorOn('#000075'), '#fff');
+});
+
+test('classForKey maps 0-9 and Shift+0-9 to classes 0-19', () => {
+  assert.equal(C.classForKey('Digit3', false), 3);
+  assert.equal(C.classForKey('Numpad0', false), 0);
+  assert.equal(C.classForKey('Digit0', true), 10);
+  assert.equal(C.classForKey('Digit9', true), 19);
+  assert.equal(C.classForKey('KeyA', false), -1);
+  assert.equal(C.classForKey(undefined, false), -1);
+});
+
+test('searchClasses ranks ID, prefix, word prefix, substring and multi-word matches', () => {
+  assert.deepEqual(C.searchClasses(IRS_CLASSES, ''), [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.deepEqual(C.searchClasses(IRS_CLASSES, '8'), [8]);
+  assert.deepEqual(C.searchClasses(IRS_CLASSES, 'car'), [0]);
+  assert.deepEqual(C.searchClasses(IRS_CLASSES, 'pick'), [1]);
+  assert.deepEqual(C.searchClasses(IRS_CLASSES, 'bus'), [7, 8]);
+  assert.deepEqual(C.searchClasses(IRS_CLASSES, '3ax'), [4, 8]);
+  assert.deepEqual(C.searchClasses(IRS_CLASSES, '3 bus'), [8]);
+  assert.deepEqual(C.searchClasses(IRS_CLASSES, 'TRUCK'), [1, 3, 4, 5, 6]);
+  assert.deepEqual(C.searchClasses(IRS_CLASSES, 'ruc'), [1, 3, 4, 5, 6]);
+  assert.deepEqual(C.searchClasses(IRS_CLASSES, 'zebra'), []);
+  const eleven = [...IRS_CLASSES, 'Pedestrian', 'Bicycle'];
+  assert.deepEqual(C.searchClasses(eleven, '10'), [10]);
+  assert.deepEqual(C.searchClasses(eleven, 'bi'), [10]);
+});

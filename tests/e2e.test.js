@@ -156,6 +156,55 @@ test('fast key presses never move boxes from one image to another', { skip }, ()
   for (const [rel, buf] of Object.entries(original)) if (rel.startsWith('Labels/')) assert.ok(buf.equals(disk[rel]), `${rel} was rewritten`);
 }));
 
+async function clickAt(b, p) {
+  const [c] = await b.evaluate(`YOLOUI._toClient(${JSON.stringify([p])})`);
+  await b.mouse('mousePressed', c.x, c.y); await b.mouse('mouseReleased', c.x, c.y);
+}
+const boxCenter = bx => ({ x: bx.xc, y: bx.yc });
+
+test('classes: number keys, Shift+number for 10+, type-to-search picker, name labels toggle', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  let s = await snap(b);
+  // Select the first box (a Car) and change it with a number key.
+  await clickAt(b, boxCenter(s.boxes[0]));
+  assert.equal((await snap(b)).selected, 0);
+  await b.key('8');
+  s = await snap(b);
+  assert.equal(s.boxes[0].cls, 8);
+  assert.equal(s.currentClass, 0, 'with a box selected, the key changes the box, not the class for new boxes');
+  // Type-to-search: C, "pick", Enter.
+  await b.key('c');
+  assert.ok(await b.evaluate(`document.getElementById('classPicker').classList.contains('show')`));
+  await b.send('Input.insertText', { text: 'pick' });
+  await b.key('Enter');
+  s = await snap(b);
+  assert.equal(s.boxes[0].cls, 1);
+  assert.ok(!(await b.evaluate(`document.getElementById('classPicker').classList.contains('show')`)));
+  // Undo goes back to class 8.
+  await b.evaluate('YOLOUI.undo()');
+  assert.equal((await snap(b)).boxes[0].cls, 8);
+  // More than ten classes: add two, Shift+0 picks class 10 for new boxes.
+  await b.evaluate('YOLOUI.addNewClass(); YOLOUI.addNewClass()');
+  await b.key('Escape');
+  assert.equal((await snap(b)).selected, -1);
+  await b.key('0', { shift: true, code: 'Digit0', keyCode: 48 });
+  assert.equal((await snap(b)).currentClass, 10);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await settle(b);
+  const text = (await getFolder(b, 'round'))[`Labels/${IMG0}.txt`].toString();
+  assert.match(text, /^8 0\.624491 /);
+  assert.match(text.split('\n').at(-2), /^10 0\.85/);
+  // Class names on boxes can be hidden with L, and the choice is remembered.
+  assert.equal(await b.evaluate(`document.getElementById('showClassNames').checked`), true);
+  await b.key('l');
+  assert.equal(await b.evaluate(`document.getElementById('showClassNames').checked`), false);
+  assert.equal(await b.evaluate(`localStorage.getItem('yoloble_show_class_names')`), '0');
+  // Removing classes is refused while a folder is open.
+  await b.evaluate('YOLOUI._removeClass(0)');
+  assert.match(b.dialogs.at(-1), /cannot be removed or reset while a folder is open/);
+}));
+
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._loadReadOnlyForTests(await r.getDirectoryHandle('round')); })()`);
