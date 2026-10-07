@@ -121,7 +121,9 @@ test('edits are saved back into the folder; only label files and image_status.js
   let disk = await getFolder(b, 'round');
   const lines = disk[`Labels/${IMG0}.txt`].toString().trim().split('\n');
   assert.equal(lines.length, 4);
-  assert.match(lines[3], /^0 0\.85\d{4} 0\.85\d{4} 0\.1\d{5} 0\.1\d{5}$/);
+  assert.match(lines[3], /^0( \d\.\d{6}){4}$/);
+  const [, xc, yc, w, h] = lines[3].split(' ').map(Number);
+  for (const [v, want] of [[xc, 0.85], [yc, 0.85], [w, 0.1], [h, 0.1]]) assert.ok(Math.abs(v - want) < 0.005, lines[3]);
 
   // Deleting an image writes image_status.json with every image, exact names.
   await b.evaluate('YOLOUI.deleteCurrentImage()');
@@ -220,6 +222,82 @@ test('undo is per image: Ctrl+Z on another image never brings the previous image
   assert.equal((await snap(b)).boxes.length, 4);
   await b.key('z', { ctrl: true });
   assert.equal((await snap(b)).boxes.length, 3, 'undo still works on the image it belongs to');
+}));
+
+const statusFile = async b => Object.fromEntries(JSON.parse((await getFolder(b, 'round'))['image_status.json'].toString()).map(r => [r.name, r.status]));
+const waitLoaded = (b, i) => b.waitFor(`YOLOUI._snapshot().index === ${i} && YOLOUI._snapshot().owner === YOLOUI._snapshot().name`);
+const modal = b => b.evaluate(`({ show: document.getElementById('modalBg').classList.contains('show'), title: document.getElementById('modalTitle').textContent, body: document.getElementById('modalBody').textContent })`);
+
+test('review: Space marks reviewed and moves on, N confirms an empty frame, progress and Finish round', { skip }, () => withBrowser(async b => {
+  const original = ORIGINAL();
+  await putFolder(b, 'round', original);
+  await openRound(b);
+  const names = Object.keys(original).filter(k => k.startsWith('Images/')).map(k => k.slice(7)).sort();
+  // Pre-labels make images "labeled", which is not reviewed.
+  assert.equal(await b.evaluate(`document.getElementById('progressText').textContent`), '0 of 12 reviewed');
+  assert.equal(await b.evaluate(`document.getElementById('statusPill').textContent`), 'Not reviewed');
+
+  await b.key(' ');
+  await waitLoaded(b, 1);
+  await settle(b);
+  let st = await statusFile(b);
+  assert.equal(st[names[0]], 'reviewed');
+  assert.equal(st[names[1]], 'unlabeled', 'image with an empty pre-label file');
+  assert.equal(st[names[2]], 'labeled', 'pre-labeled images are written as labeled, not reviewed');
+  assert.equal(await b.evaluate(`document.getElementById('progressText').textContent`), '1 of 12 reviewed');
+
+  // N on the empty frame: no question, reviewed, its empty file stays, next image.
+  await b.key('n');
+  await waitLoaded(b, 2);
+  assert.equal(b.dialogs.length, 0);
+  // N on an image with boxes: confirm, remove them, reviewed, empty file, next image.
+  await b.key('n');
+  await waitLoaded(b, 3);
+  await settle(b);
+  let disk = await getFolder(b, 'round');
+  assert.equal(disk[`Labels/${names[1].replace('.jpg', '.txt')}`].toString(), '');
+  assert.equal(disk[`Labels/${names[2].replace('.jpg', '.txt')}`].toString(), '');
+  st = await statusFile(b);
+  assert.equal(st[names[1]], 'reviewed');
+  assert.equal(st[names[2]], 'reviewed');
+  assert.match(b.dialogs.at(-1), /Remove all 2 boxes and mark this image as having no vehicles/);
+
+  // Editing a reviewed image keeps it reviewed.
+  await b.evaluate(`YOLOUI.previousImage()`);
+  await waitLoaded(b, 2);
+  await drag(b, { x: 0.40, y: 0.80 }, { x: 0.50, y: 0.90 });
+  await settle(b);
+  assert.equal((await statusFile(b))[names[2]], 'reviewed');
+  // Clicking the pill un-reviews.
+  await b.evaluate(`document.getElementById('statusPill').click()`);
+  await settle(b);
+  assert.equal((await statusFile(b))[names[2]], 'labeled');
+  assert.equal(await b.evaluate(`document.getElementById('progressText').textContent`), '2 of 12 reviewed');
+
+  // Finish with images left: warning listing them.
+  await b.evaluate('YOLOUI.finishRound()');
+  let m = await modal(b);
+  assert.equal(m.show, true);
+  assert.equal(m.title, 'Round not finished yet');
+  assert.match(m.body, /10 images are not reviewed\. irs ingest stops on unreviewed images/);
+  await b.key('Escape');
+
+  // Review everything else, including deleting one.
+  await b.evaluate(`YOLOUI._gotoIndex(0)`);
+  await waitLoaded(b, 0);
+  for (let i = 1; i < 12; i++) { await b.key(' '); await waitLoaded(b, i); }
+  await b.evaluate('YOLOUI.deleteCurrentImage()');
+  await b.key(' ');
+  await b.evaluate('new Promise(r => setTimeout(r, 200))');
+  assert.match(await b.evaluate(`document.getElementById('toast').textContent`), /Every image is reviewed or deleted/);
+  await b.evaluate('YOLOUI.finishRound()');
+  m = await modal(b);
+  assert.equal(m.title, 'Round finished');
+  assert.match(m.body, /11 of 12 images reviewed, 1 deleted\..*ready for irs ingest/);
+  st = await statusFile(b);
+  assert.deepEqual(Object.values(st).sort(), [...Array(11).fill('reviewed'), 'deleted'].sort());
+  disk = await getFolder(b, 'round');
+  assert.equal(disk[`Labels/${names[1].replace('.jpg', '.txt')}`].toString(), '', 'reviewed empty frame keeps its empty file');
 }));
 
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {

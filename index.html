@@ -92,6 +92,25 @@
     .class-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:12px;background:#3a3a3a;cursor:pointer;font-size:13px;border:none;color:#fff}
     .class-chip:hover{background:#4a4a4a}
     .toggle-inline{font-size:13px;display:inline-flex;align-items:center;gap:4px;color:#ddd}
+    .progress-box{display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;white-space:nowrap}
+    .progress-bar{width:120px;height:8px;background:#444;border-radius:4px;overflow:hidden;display:flex}
+    .progress-bar .r{background:#2ecc71}.progress-bar .d{background:#7f8c8d}
+    .status-pill{font-size:12px;padding:3px 9px;border-radius:10px;font-weight:600;white-space:nowrap}
+    .status-pill.reviewed{background:#1e7d3c;color:#fff;cursor:pointer}
+    .status-pill.todo{background:#6b5a12;color:#ffe9a3}
+    .btn-review{background:#27ae60}.btn-review:hover{background:#1e8449}
+    .toast{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);background:#333;border:1px solid #777;color:#fff;padding:10px 18px;border-radius:6px;z-index:3000;display:none;max-width:80vw;font-size:14px;box-shadow:0 6px 20px rgba(0,0,0,.5)}
+    .toast.show{display:block}
+    .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:2500}
+    .modal-bg.show{display:flex}
+    .modal{background:#2d2d2d;border:1px solid #555;border-radius:8px;padding:20px 24px;max-width:680px;width:90vw;max-height:80vh;overflow:auto}
+    .modal h2{font-size:18px;margin-bottom:12px}
+    .modal .body{font-size:14px;line-height:1.5}
+    .modal .body p{margin:8px 0}
+    .modal .body ul{margin:6px 0 10px 22px}
+    .modal .body .ok{color:#7dd99a}.modal .body .warn{color:#ffd166}.modal .body .err{color:#ff8a80}
+    .modal .actions{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+    .link{color:#8ab4f8;cursor:pointer;text-decoration:underline}
     .picker{position:absolute;left:50%;top:40px;transform:translateX(-50%);z-index:50;background:#2d2d2d;border:1px solid #666;border-radius:6px;box-shadow:0 8px 30px rgba(0,0,0,.6);width:340px;padding:10px;display:none}
     .picker.show{display:block}
     .picker .title{font-size:12px;color:#bbb;margin-bottom:6px}
@@ -126,15 +145,24 @@
           <span id="imageCounter">0 / 0</span>
           <button class="nav-btn" id="nextBtn" onclick="YOLOUI.nextImage()" disabled>Next (D) ▶</button>
         </div>
+        <span class="status-pill" id="statusPill"></span>
         <div id="imageName">No image loaded</div>
       </div>
     </div>
     <div class="controls-row">
       <div class="left-controls">
         <button class="btn btn-danger" id="deleteImgBtn" onclick="YOLOUI.deleteCurrentImage()">Delete Image</button>
-        <button class="btn btn-plain" id="noLabelBtn" onclick="YOLOUI.markNoLabel()">No Label</button>
+        <button class="btn btn-review" id="reviewBtn" onclick="YOLOUI.markReviewed()" title="Confirm this image's labels and go to the next image">Reviewed ✓ (Space)</button>
+        <button class="btn btn-plain" id="noLabelBtn" onclick="YOLOUI.markNoLabel()" title="Confirm that this image has no vehicles: removes all boxes, marks it reviewed and goes to the next image">No vehicles (N)</button>
         <button class="class-chip" id="classChip" onclick="YOLOUI.openClassPicker()" title="Class for new boxes. Press C to search classes; with a box selected, C changes that box."></button>
         <label class="toggle-inline"><input type="checkbox" id="showClassNames" checked onchange="YOLOUI.toggleClassNames()"> Class names (L)</label>
+      </div>
+      <div class="right-controls">
+        <div class="progress-box" id="progressBox" onclick="YOLOUI.nextUnreviewed()" title="Go to the next image that is not reviewed">
+          <div class="progress-bar"><div class="r" id="progR"></div><div class="d" id="progD"></div></div>
+          <span id="progressText"></span>
+        </div>
+        <button class="btn" id="finishBtn" onclick="YOLOUI.finishRound()" title="Check that every image is reviewed and saved">Finish round</button>
       </div>
     </div>
   </div>
@@ -200,6 +228,8 @@
                 <option value="">All Status</option>
                 <option value="labeled">Only Labeled</option>
                 <option value="unlabeled">Only Unlabeled</option>
+                <option value="unreviewed">Only Not reviewed</option>
+                <option value="reviewed">Only Reviewed</option>
               </select>
               <select id="filterOperator" class="filter-operator">
                 <option value="AND">AND</option>
@@ -278,6 +308,9 @@
       </div>
     </div>
   </div>
+
+  <div class="modal-bg" id="modalBg"><div class="modal" role="dialog" aria-modal="true"><h2 id="modalTitle"></h2><div class="body" id="modalBody"></div><div class="actions" id="modalActions"></div></div></div>
+  <div class="toast" id="toast" role="status"></div>
 
   <div id="loadingOverlay" class="loading-overlay">
     <div class="loading-content">
@@ -381,8 +414,9 @@
     function planRecovery(session, disk){
       const labels=[], statuses=[], conflicts=[];
       for(const [name,rec] of Object.entries(session?.labels||{})){
-        const cur=disk.labelText(name), base=rec.base ?? null;
-        if(cur===rec.text) continue;
+        // A missing file and an empty one say the same thing (no boxes).
+        const cur=disk.labelText(name) ?? '', base=rec.base ?? '';
+        if(cur===(rec.text ?? '')) continue;
         if(cur===base) labels.push({name, text:rec.text}); else conflicts.push(name);
       }
       for(const [name,st] of Object.entries(session?.statuses||{})){
@@ -429,9 +463,30 @@
       return hits.sort((a,b)=>a[0]-b[0]||a[1]-b[1]).map(h=>h[1]);
     }
 
+    // ----- review status -----
+    // unlabeled / labeled: not reviewed (labeled only says the image has boxes,
+    // for example pre-labels). reviewed: a person confirmed the labels; an empty
+    // label file then means a confirmed empty frame. deleted: rejected.
+    const STATUSES=['unlabeled','labeled','reviewed','deleted'];
+    // The status Yoloble derives from the boxes. It never overrides a decision
+    // (reviewed, deleted). An image already marked labeled without boxes stays
+    // labeled: older versions used that for "No Label".
+    function autoStatus(current, hasBoxes){
+      if(current==='reviewed' || current==='deleted') return current;
+      return hasBoxes || current==='labeled' ? 'labeled' : 'unlabeled';
+    }
+    const isDecided=st=>st==='reviewed' || st==='deleted';
+    function reviewProgress(names, statusOf){
+      let reviewed=0, deleted=0;
+      for(const n of names){ const st=statusOf(n); if(st==='reviewed') reviewed++; else if(st==='deleted') deleted++; }
+      const total=names.length;
+      return {total, reviewed, deleted, remaining:total-reviewed-deleted};
+    }
+
     return { splitLines, parseLabelText, serializeLabels, corners, iou, labelFileNameFor, isSafeFileName,
              parseStatusJson, serializeStatusJson, canonicalLabelText, planRecovery,
-             PALETTE, classColor, textColorOn, classForKey, searchClasses };
+             PALETTE, classColor, textColorOn, classForKey, searchClasses,
+             STATUSES, autoStatus, isDecided, reviewProgress };
   })();
   if(typeof module!=='undefined' && module.exports) module.exports=YoloCore;
   </script>
@@ -625,6 +680,7 @@
       if(prev===next) return false;
       statusMap.set(k,next); persistStatus();
       if(user && folder) noteStatusChanged();
+      scheduleReviewUI();
       return true;
     }
     // ----- saving back to the opened folder -----
@@ -670,8 +726,11 @@
     function noteLabelsChanged(name,arr){
       if(session){ session.edited.add(name); scheduleSessionSave(); }
       if(!folder) return;
-      const text=YoloCore.serializeLabels(arr);
-      if(save.diskText.get(name)===text) save.pendingLabels.delete(name); else save.pendingLabels.set(name,text);
+      const text=YoloCore.serializeLabels(arr), disk=save.diskText.has(name)?save.diskText.get(name):null;
+      // No file and no boxes mean the same, except on a reviewed image, where an
+      // empty file records a confirmed empty frame.
+      const same = disk===text || (disk===null && text==='' && statusOfName(name)!=='reviewed');
+      if(same) save.pendingLabels.delete(name); else save.pendingLabels.set(name,text);
       scheduleSave();
     }
     function noteStatusChanged(){ if(!folder) return; save.pendingStatus=true; scheduleSave(); }
@@ -997,7 +1056,8 @@
         const nm=imageMetadata[i].name, arr=labels[i]||[], hasBoxes=arr.length>0, forced=statusMap.get(norm(nm))==='labeled' && !arr.length;
         const classes=new Set(); arr.forEach(b=>{ classes.add(b.cls); labelDatabase.classIndex[b.cls].add(i); });
         labelDatabase.imageIndex[i]={hasLabels:hasBoxes||forced,classes,boxCount:arr.length,lastModified:Date.now()};
-        if(hasBoxes||forced){ labelDatabase.statusIndex.labeled.add(i); setStatus(nm,'labeled',{user:false}); } else { labelDatabase.statusIndex.unlabeled.add(i); if(statusMap.get(norm(nm))!=='deleted') setStatus(nm,'unlabeled',{user:false}); }
+        const st=YoloCore.autoStatus(statusMap.get(norm(nm)),hasBoxes); setStatus(nm,st,{user:false});
+        if(hasBoxes||forced||st==='reviewed') labelDatabase.statusIndex.labeled.add(i); else labelDatabase.statusIndex.unlabeled.add(i);
       }
       labelDatabase.isBuilt=true; labelDatabase.lastUpdate=Date.now(); filterCache.clear(); updateDatabaseStatus(); updateFilterStats();
     }
@@ -1008,7 +1068,8 @@
       const cls=new Set(); arr.forEach(b=>{ cls.add(b.cls); if(!labelDatabase.classIndex[b.cls]) labelDatabase.classIndex[b.cls]=new Set(); labelDatabase.classIndex[b.cls].add(i); });
       labelDatabase.imageIndex[i]={hasLabels:has||forced,classes:cls,boxCount:arr.length,lastModified:Date.now()};
       labelDatabase.statusIndex.labeled.delete(i); labelDatabase.statusIndex.unlabeled.delete(i);
-      if(has||forced){ labelDatabase.statusIndex.labeled.add(i); setStatus(nm,'labeled'); } else { labelDatabase.statusIndex.unlabeled.add(i); if(statusMap.get(norm(nm))!=='deleted') setStatus(nm,'unlabeled'); }
+      const st=YoloCore.autoStatus(statusMap.get(norm(nm)),has); setStatus(nm,st);
+      if(has||forced||st==='reviewed') labelDatabase.statusIndex.labeled.add(i); else labelDatabase.statusIndex.unlabeled.add(i);
       if(isFiltered) invalidateFilterCache(); updateFilterStats();
     }
     function invalidateFilterCache(){ filterCache.clear(); if(isFiltered) applyFilters(); }
@@ -1029,7 +1090,7 @@
       let res=new Set(Array.from({length:imageMetadata.length},(_,i)=>i));
       
       // Apply status filter
-      if(s){ res=(op==='AND')?intersect(res,labelDatabase.statusIndex[s]):union(res,labelDatabase.statusIndex[s]); }
+      if(s){ const S=statusSetFor(s); res=(op==='AND')?intersect(res,S):union(res,S); }
       
       // Apply class filter
       if(c!==''){ const ci=parseInt(c); res=(op==='AND'||!s)?intersect(res,labelDatabase.classIndex[ci]):union(res,labelDatabase.classIndex[ci]); }
@@ -1045,7 +1106,7 @@
         const H=new Set(); 
         for(let i=0;i<imageMetadata.length;i++){ 
           const status = statusMap.get(norm(imageMetadata[i].name));
-          if(status === 'labeled') H.add(i);
+          if(status === 'labeled' || status === 'reviewed') H.add(i);
         } 
         res=diff(res,H);
       }
@@ -1069,6 +1130,12 @@
       updateFilterResults(); updateUI(); updateQuickNavigation();
     }
     
+    function statusSetFor(s){
+      if(labelDatabase.statusIndex[s]) return labelDatabase.statusIndex[s];
+      const R=new Set();
+      imageMetadata.forEach((m,i)=>{ const reviewed=statusMap.get(norm(m.name))==='reviewed'; if(reviewed===(s==='reviewed')) R.add(i); });
+      return R;
+    }
     function toggleHidePrevLabeled(){ hidePrevLabeled=!!$("hidePrevLabeled").checked; applyFilters(); }
     function clearFilters(){ $("filterStatus").value=''; $("filterClass").value=''; $("filterOperator").value='AND'; $("hidePrevLabeled").checked=false; hidePrevLabeled=false; classFilterState={}; updateClassFilterGrid(); currentFilteredIndices=[]; isFiltered=false; updateFilterResults(); updateUI(); updateQuickNavigation(); }
     function setupClassFilterGrid(){
@@ -1160,7 +1227,7 @@
         let found=-1, strat='';
         for(let k=0;k<imageMetadata.length;k++){ const im=imageMetadata[k].name.replace(/\.[^/.]+$/,''); if(im===ln){found=k;strat='exact';break} }
         if(found===-1){ for(let k=0;k<imageMetadata.length;k++){ if(norm(imageMetadata[k].name.replace(/\.[^/.]+$/,''))===norm(ln)){found=k;strat='lower';break} } }
-        if(found!==-1){ labels[found]=parsed; ok++; save.diskText.set(imageMetadata[found].name, YoloCore.canonicalLabelText(text)); imageMetadata[found].labelFile=lf.name; imageMetadata[found].matchStrategy=strat; imageMetadata[found].labelLoadTime=Date.now(); if(parsed.length>0) setStatus(imageMetadata[found].name,'labeled',{user:false}); }
+        if(found!==-1){ labels[found]=parsed; ok++; save.diskText.set(imageMetadata[found].name, YoloCore.canonicalLabelText(text)); imageMetadata[found].labelFile=lf.name; imageMetadata[found].matchStrategy=strat; imageMetadata[found].labelLoadTime=Date.now(); setStatus(imageMetadata[found].name,YoloCore.autoStatus(statusMap.get(norm(imageMetadata[found].name)),parsed.length>0),{user:false}); }
         if(i%50===0) await new Promise(r=>setTimeout(r,0));
       }
       updateLoading(90,'Building database...'); buildLabelDatabase();
@@ -1247,12 +1314,98 @@
         if(imageMetadata.length) loadCurrentImage(); else updateUI();
       }
     }
-    function markNoLabel(){
-      if(!imageMetadata.length) return;
-      const meta=imageMetadata[currentImageIndex];
-      setStatus(meta.name,'labeled'); boxes=[]; labels[currentImageIndex]=[];
-      updateBoxList(); scheduleDraw(); commitEdit(); updateUI();
+    // ----- review -----
+    const allImageNames=()=>[...new Set(folder ? folder.imageNames : uploadedNames)];
+    const statusOfName=n=>statusMap.get(norm(n)) ?? 'unlabeled';
+    let reviewUIPending=false;
+    function scheduleReviewUI(){ if(reviewUIPending) return; reviewUIPending=true; requestAnimationFrame(()=>{ reviewUIPending=false; updateReviewUI(); }); }
+    function updateReviewUI(){
+      const p=YoloCore.reviewProgress(allImageNames(), statusOfName);
+      $("progressText").textContent = p.total ? `${p.reviewed} of ${p.total} reviewed`+(p.deleted?` · ${p.deleted} deleted`:'') : '';
+      $("progR").style.width = p.total ? `${100*p.reviewed/p.total}%` : '0';
+      $("progD").style.width = p.total ? `${100*p.deleted/p.total}%` : '0';
+      const pill=$("statusPill"), name=boxesOwner;
+      if(name===null){ pill.style.display='none'; return; }
+      const st=statusOfName(name); pill.style.display='';
+      if(st==='reviewed'){ pill.className='status-pill reviewed'; pill.textContent='Reviewed ✓'; pill.title='Click to mark this image as not reviewed'; pill.onclick=unmarkReviewed; }
+      else { pill.className='status-pill todo'; pill.textContent='Not reviewed'; pill.title=st==='labeled'?'Has boxes (pre-labels or edits) but nobody has confirmed them yet':'Not reviewed yet'; pill.onclick=null; }
     }
+    function markReviewed(){ return queueNav(()=>markReviewedNow()); }
+    async function markReviewedNow({advance=true}={}){
+      if(boxesOwner===null) return;
+      const name=boxesOwner;
+      commitEdit();
+      setStatus(name,'reviewed');
+      noteLabelsChanged(name, labels[indexOfName(name)]||[]);
+      updateUI();
+      if(advance) await advanceAfterReview();
+    }
+    async function advanceAfterReview(){
+      const v=getValidIndices(), p=v.indexOf(currentImageIndex);
+      if(p>=0 && p<v.length-1) return nextImageNow();
+      const left=YoloCore.reviewProgress(allImageNames(), statusOfName).remaining;
+      showToast(left ? `That was the last image. ${left} image${left>1?'s are':' is'} not reviewed yet: click the progress counter to go to the next one.` : 'Every image is reviewed or deleted. Press Finish round.');
+    }
+    function unmarkReviewed(){
+      if(boxesOwner===null || statusOfName(boxesOwner)!=='reviewed') return;
+      statusMap.delete(norm(boxesOwner));
+      setStatus(boxesOwner, YoloCore.autoStatus(undefined, boxes.length>0));
+      commitEdit(); updateUI();
+    }
+    // A confirmed empty frame: no boxes, reviewed, empty label file.
+    function markNoLabel(){
+      return queueNav(async()=>{
+        if(boxesOwner===null) return;
+        if(boxes.length){
+          if(!confirm(`Remove all ${boxes.length} box${boxes.length>1?'es':''} and mark this image as having no vehicles?`)) return;
+          saveState(); boxes=[]; selectedBoxIndex=-1; updateBoxList(); scheduleDraw();
+        }
+        await markReviewedNow();
+      });
+    }
+    function gotoName(name){
+      return queueNav(async()=>{
+        const i=indexOfName(name); if(i<0) return;
+        commitEdit(); currentImageIndex=i; await loadCurrentImage(); updateUI();
+      });
+    }
+    function nextUnreviewed(){
+      const n=imageMetadata.length; if(!n) return;
+      for(let k=1;k<=n;k++){ const m=imageMetadata[(currentImageIndex+k)%n]; if(!YoloCore.isDecided(statusOfName(m.name))) return gotoName(m.name); }
+      showToast('Every image is reviewed or deleted.');
+    }
+    async function finishRound(){
+      if(!imageMetadata.length && !folder){ alert('Open a round folder first.'); return; }
+      commitEdit();
+      if(folder?.writable) await flushSaves();
+      const names=allImageNames(), p=YoloCore.reviewProgress(names, statusOfName);
+      const open=names.filter(n=>!YoloCore.isDecided(statusOfName(n))).sort();
+      const body=document.createElement('div'), unsaved=unsavedCount();
+      const para=(cls,text)=>{ const e=document.createElement('p'); e.className=cls; e.textContent=text; body.appendChild(e); return e; };
+      const nameList=list=>{ const ul=document.createElement('ul'); list.slice(0,25).forEach(n=>{ const li=document.createElement('li'); const a=document.createElement('span'); a.className='link'; a.textContent=n; a.onclick=()=>{ hideModal(); gotoName(n); }; li.appendChild(a); ul.appendChild(li); }); if(list.length>25){ const li=document.createElement('li'); li.textContent=`…and ${list.length-25} more`; ul.appendChild(li); } body.appendChild(ul); };
+      para('', `${p.reviewed} of ${p.total} images reviewed, ${p.deleted} deleted.`);
+      if(!folder) para('warn','These images were not opened from a folder, so nothing is saved to disk: use Download Bundle.');
+      else if(!folder.writable || unsaved) para('err', `${unsaved||'Some'} change(s) are NOT saved in "${folder.name}". Fix saving (see the banner) or use Download Bundle before closing Yoloble.`);
+      if(open.length){ para('warn', `${open.length} image${open.length>1?'s are':' is'} not reviewed. irs ingest stops on unreviewed images unless it is run with --allow-unreviewed (they then stay queued):`); nameList(open); }
+      const problems=open.length>0 || !folder || !folder.writable || unsaved>0;
+      if(!problems) para('ok', `Every image is reviewed or deleted and everything is saved in "${folder.name}". The round is ready for irs ingest.`);
+      const buttons=[];
+      if(open.length) buttons.push({label:'Go to first unreviewed', primary:true, onClick:()=>gotoName(open.find(n=>indexOfName(n)>=0)||open[0])});
+      buttons.push({label:'Close', primary:!open.length});
+      showModal(problems?'Round not finished yet':'Round finished', body, buttons);
+    }
+
+    // ----- small UI helpers -----
+    let toastTimer=null;
+    function showToast(msg,ms=4000){ const t=$("toast"); t.textContent=msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),ms); }
+    function showModal(title, bodyNode, buttons){
+      $("modalTitle").textContent=title; const b=$("modalBody"); b.innerHTML=''; b.appendChild(bodyNode);
+      const a=$("modalActions"); a.innerHTML='';
+      buttons.forEach(({label,primary,onClick})=>{ const btn=document.createElement('button'); btn.className='btn'+(primary?'':' btn-plain'); btn.textContent=label; btn.onclick=()=>{ hideModal(); onClick?.(); }; a.appendChild(btn); });
+      $("modalBg").classList.add('show'); a.lastChild?.focus();
+    }
+    function hideModal(){ $("modalBg").classList.remove('show'); }
+    const modalOpen=()=>$("modalBg").classList.contains('show');
 
     function fitToScreen(){
       const meta=imageMetadata[currentImageIndex]; if(!meta?.img) return;
@@ -1350,7 +1503,7 @@ Generated: ${new Date().toISOString()}`;
     function updateUI(){
       $("totalImages").textContent=imageMetadata.length; $("loadedImages").textContent=imageCache.size();
       const ic=$("imageCounter"), nm=$("imageName"), prev=$("prevBtn"), next=$("nextBtn"), page=$("pageInput"), dbg=$("debugInfo");
-      if(!imageMetadata.length){ ic.textContent='0 / 0'; nm.textContent='No image loaded'; dbg.textContent='No image loaded'; prev.disabled=true; next.disabled=true; page.max=0; updateZoomLevel(); return }
+      if(!imageMetadata.length){ ic.textContent='0 / 0'; nm.textContent='No image loaded'; dbg.textContent='No image loaded'; prev.disabled=true; next.disabled=true; page.max=0; updateZoomLevel(); updateReviewUI(); return }
       const valid=getValidIndices(); const meta=imageMetadata[currentImageIndex]; const arr=labels[currentImageIndex]||[]; const has=arr.length>0; const forced=statusMap.get(norm(meta.name))==='labeled' && !arr.length; const st=getCurrentImageStatus(); const labelFile=meta.labelFile||'No label file', strategy=meta.matchStrategy||'N/A';
       dbg.innerHTML=`Index: ${currentImageIndex}<br>Label file: ${labelFile}<br>Match: ${strategy}<br>Boxes: ${arr.length}${forced?' (No Label)':''}`;
       if(isFiltered){ const pos=currentFilteredIndices.indexOf(currentImageIndex); ic.textContent=(pos!==-1)?`${pos+1} / ${currentFilteredIndices.length} (filtered)`:`- / ${currentFilteredIndices.length} (filtered out)`; }
@@ -1363,7 +1516,7 @@ Generated: ${new Date().toISOString()}`;
       } else {
         const pos=valid.indexOf(currentImageIndex); prev.disabled=pos<=0; next.disabled=pos>=valid.length-1; prev.textContent='◀ Prev (A)'; next.textContent='Next (D) ▶';
       }
-      page.max=valid.length; updateZoomLevel(); updateFilterStats();
+      page.max=valid.length; updateZoomLevel(); updateFilterStats(); updateReviewUI();
     }
 
     function showDetailedDebug(){
@@ -1503,7 +1656,7 @@ Generated: ${new Date().toISOString()}`;
             // unreadable lines keeps its raw text so the next edit rewrites it.
             save.diskText.set(name, YoloCore.canonicalLabelText(text));
             if(parsed.bad.length) loadWarnings.push(`Labels/${fileName}: ${parsed.bad.length} unreadable line(s), e.g. line ${parsed.bad[0].line+1} (${parsed.bad[0].reason}).`);
-            if(labels[i].length>0) setStatus(name,'labeled',{user:false});
+            setStatus(name,YoloCore.autoStatus(statusMap.get(norm(name)),labels[i].length>0),{user:false});
           }
         }
       }
@@ -1551,6 +1704,7 @@ Generated: ${new Date().toISOString()}`;
       canvas.addEventListener('wheel', onWheel, {passive:false});
       canvas.addEventListener('contextmenu', e=>e.preventDefault());
       document.addEventListener('keydown', onKeyDown);
+      document.addEventListener('click', e=>{ const b=e.target.closest?.('button'); if(b && !b.closest('.modal')) b.blur(); });
 
       const overlay=$("dragOverlay");
       document.addEventListener('dragover', e=>{ e.preventDefault(); overlay.classList.add('active'); });
@@ -1564,7 +1718,10 @@ Generated: ${new Date().toISOString()}`;
 
     function onKeyDown(e){
       if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.type==='checkbox') return;
+      if(modalOpen()){ if(e.key==='Escape') hideModal(); return; }
       if((e.ctrlKey||e.metaKey) && !e.shiftKey && (e.key==='z'||e.key==='Z')){ e.preventDefault(); undo(); return; }
+      if(e.code==='Space' && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); if(!e.repeat) markReviewed(); return; }
+      if((e.key==='n'||e.key==='N') && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); markNoLabel(); return; }
       if(e.key==='Delete'||e.key==='Backspace'){ if(selectedBoxIndex!==-1){ saveState(); boxes.splice(selectedBoxIndex,1); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); commitEdit(); } }
       else if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A'){ e.preventDefault(); previousImage(); }
       else if(e.key==='ArrowRight'||e.key==='d'||e.key==='D'){ e.preventDefault(); nextImage(); }
@@ -1650,10 +1807,11 @@ Generated: ${new Date().toISOString()}`;
       showDetailedDebug, deleteCurrentImage,
       chooseFolder, grantWriteAccess, retrySave, resumeLastFolder, hideNotice,
       openClassPicker, toggleClassNames: ()=>toggleClassNames(), _renderClassList: renderClassList,
+      markReviewed, nextUnreviewed, finishRound,
       cancelLoading,
       // For the automated tests (tests/e2e.test.js); not used by the page.
       _openFolder: openFolder, _flushSaves: ()=>flushSaves(), _saveSession: ()=>saveSessionNow(), _storageReady: ()=>storageReady,
-      _loadReadOnlyForTests: h=>loadDatasetFromDirectory(h,false),
+      _loadReadOnlyForTests: h=>loadDatasetFromDirectory(h,false), _gotoIndex: i=>gotoName(imageMetadata[i]?.name),
       _toClient: pts=>{ updateRenderState(); const r=canvas.getBoundingClientRect(); return pts.map(p=>{ const s=imageToScreen(p.x*RS.imgW,p.y*RS.imgH); return {x:r.left+s.x, y:r.top+s.y}; }); },
       _snapshot: ()=>({ index:currentImageIndex, name:imageMetadata[currentImageIndex]?.name??null, count:imageMetadata.length,
         boxes:JSON.parse(JSON.stringify(boxes)), owner:boxesOwner, selected:selectedBoxIndex, currentClass,

@@ -58,3 +58,13 @@ Tick each line. Each line was added with the change it covers.
 - [ ] More than ten classes: **Edit Classes** > **+ Add** twice (11 classes). **Shift+0** picks class 10, **Shift+1** class 11 does nothing (no such class), keys 0–9 still pick 0–9. A box drawn with class 10 is saved as `10 …`.
 - [ ] **L** (or the **Class names** checkbox) hides the name tags on boxes (the selected box keeps its tag); the setting is remembered after a reload.
 - [ ] With a folder open, removing a class or **Reset** is refused with a message; renaming and adding still work and never change `classes.txt`.
+
+### Reviewed status
+
+- [ ] On opening the sample round the header says **0 of 12 reviewed** and the image shows **Not reviewed**, although the pre-labeled images are `labeled`: boxes alone never count as reviewed.
+- [ ] **Space** (or **Reviewed ✓**) marks the image reviewed and shows the next one; the counter goes up and `image_status.json` has `"reviewed"` for it. Holding Space does not skip through images.
+- [ ] On `clark_ave_01__a1b2c3d4__f010808.jpg` (no vehicles) press **N**: no question, it is reviewed and its label file stays empty. On an image with boxes, **N** asks first, then removes the boxes, marks it reviewed and writes an empty label file; **Ctrl+Z** on that image brings the boxes back.
+- [ ] Edit a reviewed image: it stays reviewed. Click the green **Reviewed ✓** pill: it goes back to **Not reviewed** (`labeled` in the file).
+- [ ] **Finish round** with images left: the dialog lists them (click one to go there) and warns that irs ingest stops on unreviewed images. Clicking the progress counter goes to the next unreviewed image.
+- [ ] Review the rest (deleting one): after the last one a message says everything is done; **Finish round** says the round is ready for irs ingest. Smart Filters **Only Not reviewed** / **Only Reviewed** show the expected images.
+- [ ] Older status lists: a folder whose `image_status.json` only has `labeled`/`unlabeled`/`deleted` opens as before (0 reviewed).

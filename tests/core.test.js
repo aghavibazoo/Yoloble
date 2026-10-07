@@ -98,6 +98,13 @@ test('planRecovery restores only changes the folder never received', () => {
   assert.deepEqual(plan.conflicts, ['moved', 'f']);
 });
 
+test('planRecovery treats a missing label file like an empty one', () => {
+  const plan = C.planRecovery({ labels: { a: { text: '', base: null }, b: { text: 'X', base: '' } } },
+    { labelText: n => ({ a: null, b: null })[n], status: () => null });
+  assert.deepEqual(plan.labels, [{ name: 'b', text: 'X' }]);
+  assert.deepEqual(plan.conflicts, []);
+});
+
 test('planRecovery with no session or nothing lost is empty', () => {
   const disk = { labelText: () => null, status: () => null };
   assert.deepEqual(C.planRecovery(null, disk), { labels: [], statuses: [], conflicts: [] });
@@ -137,4 +144,24 @@ test('searchClasses ranks ID, prefix, word prefix, substring and multi-word matc
   const eleven = [...IRS_CLASSES, 'Pedestrian', 'Bicycle'];
   assert.deepEqual(C.searchClasses(eleven, '10'), [10]);
   assert.deepEqual(C.searchClasses(eleven, 'bi'), [10]);
+});
+
+test('autoStatus never overrides reviewed or deleted, and labeled means boxes, not review', () => {
+  assert.equal(C.autoStatus('unlabeled', true), 'labeled');
+  assert.equal(C.autoStatus(undefined, true), 'labeled');
+  assert.equal(C.autoStatus('unlabeled', false), 'unlabeled');
+  assert.equal(C.autoStatus('labeled', false), 'labeled', 'older "No Label" marking is kept');
+  assert.equal(C.autoStatus('reviewed', true), 'reviewed');
+  assert.equal(C.autoStatus('reviewed', false), 'reviewed', 'confirmed empty frame stays reviewed');
+  assert.equal(C.autoStatus('deleted', true), 'deleted');
+  assert.deepEqual(C.STATUSES, ['unlabeled', 'labeled', 'reviewed', 'deleted']);
+  assert.equal(C.isDecided('labeled'), false);
+  assert.equal(C.isDecided('reviewed'), true);
+  assert.equal(C.isDecided('deleted'), true);
+});
+
+test('reviewProgress counts reviewed and deleted; labeled is not reviewed', () => {
+  const st = { a: 'reviewed', b: 'labeled', c: 'deleted', d: 'unlabeled', e: 'reviewed' };
+  assert.deepEqual(C.reviewProgress(Object.keys(st), n => st[n]), { total: 5, reviewed: 2, deleted: 1, remaining: 2 });
+  assert.deepEqual(C.reviewProgress([], () => null), { total: 0, reviewed: 0, deleted: 0, remaining: 0 });
 });
