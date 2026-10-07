@@ -29,7 +29,7 @@ Folder and file names are case-sensitive as shown. Yoloble's folder import requi
 ## Labels
 
 - One `.txt` per image, same base name: `Images/a.jpg` ↔ `Labels/a.txt`.
-- One box per line: `<class_id> <x_center> <y_center> <width> <height>`, values normalised to 0–1, space-separated.
+- One box per line: `<class_id> <x_center> <y_center> <width> <height>`, values normalised to 0–1, space-separated. Numbers use ASCII digits only: the class id is `[0-9]+`, a coordinate a decimal such as `0.5`, `.5` or `5e-1`; anything else (`²`, full-width `１`, `inf`, `nan`) is an error at ingest.
 - As written by `irs queue`, these are model pre-labels (confidence of at least 0.25). After review they are the human-corrected labels.
 - An empty file on an image with status `reviewed` means a confirmed empty frame. An empty or missing file on any other image means nothing. A `reviewed` image without a label file is an error at ingest (a missing file is not a decision).
 - Label files use LF line endings and end with a final newline (`irs queue` and Yoloble both write it); a file without one is accepted.
@@ -39,14 +39,14 @@ Folder and file names are case-sensitive as shown. Yoloble's folder import requi
 
 ## classes.txt
 
-- UTF-8, one name per line, no blank lines. Line 1 is class ID 0. `irs queue` ends the file with a newline; a file without one (as Yoloble writes) is the same list.
+- UTF-8, one name per line, no blank lines. Line 1 is class ID 0. `irs queue` ends the file with a newline; a file without one (for example in a ZIP export of an older Yoloble) is the same list.
 - Written by `irs queue` from the current class list. Yoloble never writes it. Ingest rejects a round whose `classes.txt` differs from the class list in `round.json`.
 
 ## image_status.json
 
 A JSON array, one entry per image, keyed by image file name. `irs queue` writes it sorted by name, indented by two spaces; Yoloble writes the names exactly as the image files are named (in the folder and in the ZIP export). Ingest matches names case-insensitively, for status lists written by older Yoloble versions that lower-cased them; two entries for one name with different statuses are an error. An image without an entry is `unlabeled`.
 
-Before replacing a damaged status file, Yoloble may keep its old content as `image_status.json.bak` in the round folder. Ingest ignores that file.
+Before replacing a damaged status file, Yoloble may keep its old content as a backup in the round folder: `image_status.json.bak`, or with a UTC time stamp, `image_status.json.<UTC>.bak`. Ingest reads only `image_status.json` and ignores every file matching `image_status.json*.bak`.
 
 ```json
 [
@@ -138,7 +138,7 @@ Second set (phase 3 audit, 2026-10-07), also compatible:
 | Label files end with a final newline | writes it |
 | `classes.txt` is written by `irs queue` only | never writes it |
 | `Labels/<name>.txt.crswap` blocks ingest until Yoloble has recovered the folder | cleans it up on reopen |
-| `image_status.json.bak` in the round folder is ignored | may write it |
+| Status backups `image_status.json*.bak` (e.g. `image_status.json.<UTC>.bak`) in the round folder are ignored | may write them |
 | `Thumbs.db`, `desktop.ini`, `.DS_Store` in `Images/` or `Labels/` are ignored | nothing |
 | File names must match exactly; names differing only in case are errors | never renames files |
 | A ZIP's `project.json` may carry `round_id`; ingest refuses a ZIP of another round. A ZIP's images are checked against the round folder when it exists | may add `round_id` to `project.json` |
