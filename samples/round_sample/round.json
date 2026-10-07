@@ -1,0 +1,181 @@
+{
+  "format_version": 1,
+  "round_id": 3,
+  "model_id": "m0005",
+  "created": "2026-10-03T20:00:00Z",
+  "classes": [
+    "Car",
+    "Pickup Truck",
+    "Van",
+    "2ax Truck",
+    "3ax Truck",
+    "4ax Truck",
+    "5ax+ Truck",
+    "2ax Bus",
+    "3ax Bus"
+  ],
+  "images": {
+    "clark_ave_01__a1b2c3d4__f006138.jpg": {
+      "reason": "rare_class",
+      "reason_text": "rare class: 3ax Bus",
+      "scores": {
+        "rarity": 0.82,
+        "uncertainty": 0.0,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": [
+        0.81,
+        0.79,
+        0.65
+      ]
+    },
+    "clark_ave_01__e5f60718__f007343.jpg": {
+      "reason": "uncertainty",
+      "reason_text": "low confidence: 1 boxes between 0.2 and 0.6",
+      "scores": {
+        "rarity": 0.17,
+        "uncertainty": 0.33,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": [
+        0.42
+      ]
+    },
+    "hwy7_east__0badc0de__f008412.jpg": {
+      "reason": "disagreement",
+      "reason_text": "track disagreement: class unstable",
+      "scores": {
+        "rarity": 0.02,
+        "uncertainty": 0.0,
+        "disagreement": 1.0
+      },
+      "prelabel_conf": [
+        0.7,
+        0.68
+      ]
+    },
+    "clark_ave_01__a1b2c3d4__f010808.jpg": {
+      "reason": "random",
+      "reason_text": "random sample",
+      "scores": {
+        "rarity": 0.13,
+        "uncertainty": 0.0,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": []
+    },
+    "clark_ave_01__e5f60718__f014209.jpg": {
+      "reason": "uncertainty",
+      "reason_text": "low confidence: 1 boxes between 0.2 and 0.6",
+      "scores": {
+        "rarity": 0.14,
+        "uncertainty": 0.33,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": [
+        0.9,
+        0.83,
+        0.79,
+        0.31
+      ]
+    },
+    "hwy7_east__0badc0de__f015197.jpg": {
+      "reason": "uncertainty",
+      "reason_text": "low confidence: 2 boxes between 0.2 and 0.6",
+      "scores": {
+        "rarity": 0.06,
+        "uncertainty": 0.67,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": [
+        0.86,
+        0.78,
+        0.68,
+        0.63,
+        0.58,
+        0.27
+      ]
+    },
+    "clark_ave_01__a1b2c3d4__f016352.jpg": {
+      "reason": "uncertainty",
+      "reason_text": "low confidence: 2 boxes between 0.2 and 0.6",
+      "scores": {
+        "rarity": 0.14,
+        "uncertainty": 0.67,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": [
+        0.37,
+        0.36
+      ]
+    },
+    "clark_ave_01__e5f60718__f018633.jpg": {
+      "reason": "random",
+      "reason_text": "random sample",
+      "scores": {
+        "rarity": 0.11,
+        "uncertainty": 0.0,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": [
+        0.75
+      ]
+    },
+    "hwy7_east__0badc0de__f021759.jpg": {
+      "reason": "random",
+      "reason_text": "random sample",
+      "scores": {
+        "rarity": 0.27,
+        "uncertainty": 0.33,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": [
+        0.9,
+        0.89,
+        0.88,
+        0.81,
+        0.59
+      ]
+    },
+    "clark_ave_01__a1b2c3d4__f023836.jpg": {
+      "reason": "random",
+      "reason_text": "random sample",
+      "scores": {
+        "rarity": 0.05,
+        "uncertainty": 0.0,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": [
+        0.72
+      ]
+    },
+    "clark_ave_01__e5f60718__f026042.jpg": {
+      "reason": "random",
+      "reason_text": "random sample",
+      "scores": {
+        "rarity": 0.02,
+        "uncertainty": 0.0,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": [
+        0.9,
+        0.89,
+        0.88,
+        0.64,
+        0.61
+      ]
+    },
+    "hwy7_east__0badc0de__f029136.jpg": {
+      "reason": "uncertainty",
+      "reason_text": "low confidence: 1 boxes between 0.2 and 0.6",
+      "scores": {
+        "rarity": 0.02,
+        "uncertainty": 0.33,
+        "disagreement": 0.0
+      },
+      "prelabel_conf": [
+        0.27
+      ]
+    }
+  }
+}

@@ -1,0 +1,9 @@
+Car
+Pickup Truck
+Van
+2ax Truck
+3ax Truck
+4ax Truck
+5ax+ Truck
+2ax Bus
+3ax Bus
