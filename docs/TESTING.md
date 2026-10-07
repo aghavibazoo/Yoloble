@@ -164,3 +164,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Memory: in DevTools > Memory, browse 200 images; memory stays flat (object URLs are freed). **Download Bundle**, **Stats** and **Export** (classes) still download their files.
 - [ ] A class named `<b>Car</b>` in `classes.txt` shows literally (with the angle brackets) in the class list, filters and box tags.
 - [ ] Offline: disconnect from the network (or DevTools > Network > Offline after the page has loaded from disk), open a folder, **Download Bundle**: the ZIP is made.
+- [ ] Errors are visible: open a folder on a USB stick and unplug it while it loads: the loading box closes and a message says what failed (nothing hangs). DevTools Console shows a logged reason for every failed read or write.

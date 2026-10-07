@@ -794,7 +794,11 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     let CLASS_NAMES=["Class 0","Class 1","Class 2","Class 3","Class 4","Class 5","Class 6","Class 7","Class 8"];
     const colorOf=YoloCore.classColor;
     let showClassNames=true;
-    try{ showClassNames=localStorage.getItem('yoloble_show_class_names')!=='0'; }catch{}
+    // Per-viewer display preferences. Storage can be unavailable (private
+    // window, blocked site data); the default is used then.
+    function prefGet(key){ try{ return localStorage.getItem(key); }catch(e){ console.warn('Preference not readable:',key,e); return null; } }
+    function prefSet(key,value){ try{ localStorage.setItem(key,value); }catch(e){ console.warn('Preference not saved:',key,e); } }
+    showClassNames=prefGet('yoloble_show_class_names')!=='0';
 
     let canvas, ctx, viewW=0, viewH=0;
     let zoom=1, panX=0, panY=0;
@@ -853,12 +857,12 @@ https://github.com/nodeca/pako/blob/main/LICENSE
 
     async function initStorage(){
       try{
-        let raw=null; try{ raw=localStorage.getItem(LEGACY_STATUS_KEY); }catch{}
+        let raw=null; try{ raw=localStorage.getItem(LEGACY_STATUS_KEY); }catch(e){ console.warn('Old status list not readable',e); }
         if(raw!==null){
           const merged=new Map((await idbGet('meta','legacyStatus'))||[]);
-          try{ JSON.parse(raw).forEach(r=>{ if(r?.name&&r?.status) merged.set(norm(r.name),r.status); }); }catch{}
+          try{ JSON.parse(raw).forEach(r=>{ if(r?.name&&r?.status) merged.set(norm(r.name),r.status); }); }catch(e){ console.warn('Old status list is not valid JSON; not migrated',e); }
           await idbTx(['meta'],'readwrite',tx=>tx.objectStore('meta').put([...merged],'legacyStatus'));
-          try{ localStorage.removeItem(LEGACY_STATUS_KEY); }catch{}
+          try{ localStorage.removeItem(LEGACY_STATUS_KEY); }catch(e){ console.warn('Old status list could not be removed',e); }
         }
         legacyStatus=new Map((await idbGet('meta','legacyStatus'))||[]);
         const all=(await idbAll('sessions')).sort((a,b)=>b.updatedAt-a.updatedAt);
@@ -869,18 +873,19 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         showNotice(`Yoloble cannot keep a backup in this browser (${e.message||e}). Work is saved only to the folder you open, or by Download Bundle.`);
       }
     }
+    async function sameEntry(a,b){ try{ return await a.isSameEntry(b); }catch(e){ console.warn('Could not compare folder handles',e); return false; } }
     async function lastFolderSession(){
       const key=await idbGet('meta','lastSession'); if(!key) return null;
       const rec=await idbGet('sessions',key);
       return rec?.kind==='folder' && rec.handle ? rec : null;
     }
     async function showResumeButton(){
-      const rec=await lastFolderSession().catch(()=>null), btn=$("resumeBtn");
-      if(rec && !(folder && await folder.root.isSameEntry(rec.handle).catch(()=>false))){ btn.textContent=`Resume "${rec.name}"`; btn.title=`Reopen ${rec.name} where you left off (${new Date(rec.updatedAt).toLocaleString()})`; btn.style.display=''; }
+      const rec=await lastFolderSession().catch(e=>{ console.warn('Last folder not readable',e); return null; }), btn=$("resumeBtn");
+      if(rec && !(folder && await sameEntry(folder.root, rec.handle))){ btn.textContent=`Resume "${rec.name}"`; btn.title=`Reopen ${rec.name} where you left off (${new Date(rec.updatedAt).toLocaleString()})`; btn.style.display=''; }
       else btn.style.display='none';
     }
     async function resumeLastFolder(){
-      const rec=await lastFolderSession().catch(()=>null);
+      const rec=await lastFolderSession().catch(e=>{ console.warn('Last folder not readable',e); return null; });
       if(!rec){ $("resumeBtn").style.display='none'; return; }
       if(!(await confirmLeaveCurrent())) return;
       const h=rec.handle;
@@ -933,7 +938,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       await storageReady;
       let rec=null;
       try{
-        if(kind==='folder'){ for(const r of await idbAll('sessions')) if(r.kind==='folder' && r.handle && await r.handle.isSameEntry(handle).catch(()=>false)){ rec=r; break; } }
+        if(kind==='folder'){ for(const r of await idbAll('sessions')) if(r.kind==='folder' && r.handle && await sameEntry(r.handle, handle)){ rec=r; break; } }
         else rec=await idbGet('sessions',key);
       }catch(e){ console.error('Could not read the browser backup',e); }
       session={key:rec?.key || key || `folder:${name}:${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`, kind, name, handle:handle||null, names, edited:new Set(), savedLabels:rec?.labels||{},
@@ -1059,7 +1064,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       // createWritable() writes to a temporary file and swaps it into place on close().
       const w=await fh.createWritable({keepExistingData:false});
       try{ await w.write(data); await w.close(); }
-      catch(e){ try{ await w.abort(); }catch{} throw e; }
+      catch(e){ try{ await w.abort(); }catch(e2){ console.warn('Aborting a failed write failed too',e2); } throw e; }
       const back=new Uint8Array(await (await fh.getFile()).arrayBuffer());
       const want=typeof data==='string' ? new TextEncoder().encode(data) : data;
       if(back.length!==want.length || back.some((v,i)=>v!==want[i])) throw new Error(`${fileName} did not read back as written`);
@@ -1361,7 +1366,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     function toggleClassNames(force){
       showClassNames = typeof force==='boolean' ? force : !showClassNames;
       $("showClassNames").checked=showClassNames;
-      try{ localStorage.setItem('yoloble_show_class_names', showClassNames?'1':'0'); }catch{}
+      prefSet('yoloble_show_class_names', showClassNames?'1':'0');
       scheduleDraw();
     }
 
@@ -1641,7 +1646,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       await loadCurrentImage(); updateUI(); updateQuickNavigation(); updateSaveIndicator(); scheduleSessionSave();
     }
 
-    async function loadImagesOptimized(files){
+    const loadImagesOptimized=(files)=>withLoading(()=>loadImagesOptimizedNow(files));
+    async function loadImagesOptimizedNow(files){
       showLoading('Analyzing Images...','Preparing image metadata...');
       if(!(await confirmLeaveCurrent())){ hideLoading(); return; }
       releaseFolderLock();
@@ -1668,7 +1674,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats(); },200);
     }
 
-    async function loadLabelsOptimized(files){
+    const loadLabelsOptimized=(files)=>withLoading(()=>loadLabelsOptimizedNow(files));
+    async function loadLabelsOptimizedNow(files){
       if(!imageMetadata.length){ alert('Upload images first.'); return }
       showLoading('Loading Labels...','Processing files...');
       labels=new Array(imageMetadata.length).fill(null).map(()=>[]);
@@ -1698,7 +1705,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         if(!lines.length){ alert('Empty classes file.'); return }
         CLASS_NAMES=lines.map((l,i)=>l.trim()||`Class ${i}`);
         rebuildClassUI(); alert(`Loaded ${CLASS_NAMES.length} classes.`);
-      }catch{ alert('Failed to load classes file.') }
+      }catch(e){ console.error('classes file',e); alert(`Failed to load the classes file (${e.message||e}).`); }
     }
     function parseLabelFile(text){ return YoloCore.parseLabelText(text).boxes.map(({line,...b})=>b); }
 
@@ -1712,7 +1719,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         const url=URL.createObjectURL(meta.file);
         img=new Image(); img.src=url;
         try{ await new Promise((res,rej)=>{ img.onload=()=>res(); img.onerror=()=>rej(new Error('cannot be decoded')); }); imageCache.set(meta.name,img); meta.broken=false; }
-        catch{ img=null; meta.broken=true; }
+        catch(e){ console.warn('Image not readable',meta.name,e); img=null; meta.broken=true; }
         finally{ URL.revokeObjectURL(url); } // the decoded image stays usable
       }
       if(gen!==loadGen) return;                    // a newer load took over
@@ -1755,7 +1762,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           applyDeletedFilter(); await loadCurrentImage(); updateQuickNavigation(); updateUI();
         }
         alert('Status list(s) loaded');
-      }catch{ alert('Failed to load status list'); }
+      }catch(e){ console.error('status list',e); alert(`Failed to load the status list (${e.message||e}).`); }
     }
 
     function applyDeletedFilter(){
@@ -2026,10 +2033,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // Another folder may use the same file names for other pictures.
     function clearThumbCache(){ thumbBitmaps.forEach(b=>b.close?.()); thumbBitmaps.clear(); }
     let thumbObserver=null, stripPending=false;
-    let showStrip=true; try{ showStrip=localStorage.getItem('yoloble_show_strip')!=='0'; }catch{}
+    let showStrip=prefGet('yoloble_show_strip')!=='0';
     function toggleStrip(force){
       showStrip = typeof force==='boolean' ? force : !showStrip;
-      try{ localStorage.setItem('yoloble_show_strip', showStrip?'1':'0'); }catch{}
+      prefSet('yoloble_show_strip', showStrip?'1':'0');
       $("strip").classList.toggle('hidden',!showStrip); $("stripToggle").textContent=showStrip?'Thumbnails ▾':'Thumbnails ▸';
       if(showStrip) renderStrip();
     }
@@ -2109,7 +2116,7 @@ https://github.com/nodeca/pako/blob/main/LICENSE
           if(thumbBitmaps.size>THUMB_CACHE){ const [k,v]=thumbBitmaps.entries().next().value; v.close?.(); thumbBitmaps.delete(k); }
         }
         cv.getContext('2d').drawImage(bmp,0,0,120,68);
-      }catch{ delete el.dataset.drawn; }
+      }catch(e){ console.warn('Thumbnail not drawn',name,e); delete el.dataset.drawn; }
     }
 
     // ----- keyboard shortcut overlay (?) -----
@@ -2361,7 +2368,7 @@ Generated: ${new Date().toISOString()}`;
         const opts={mode: readOnly?'read':'readwrite'};
         if (await handle.queryPermission?.(opts) === 'granted') return true;
         if (await handle.requestPermission?.(opts) === 'granted') return true;
-      }catch{}
+      }catch(e){ console.warn('Permission request failed',e); }
       return false;
     }
 
@@ -2390,8 +2397,12 @@ Generated: ${new Date().toISOString()}`;
       const writable = await verifyPermission(dirHandle, false);
       await loadDatasetFromDirectory(dirHandle, writable);
     }
+    // Loading steps show an overlay; whatever fails, it is taken down and the
+    // error reaches the caller (which shows it).
+    async function withLoading(fn){ try{ return await fn(); }catch(e){ hideLoading(); throw e; } }
 
-    async function loadDatasetFromDirectory(rootHandle, writable=false){
+    const loadDatasetFromDirectory=(rootHandle, writable=false)=>withLoading(()=>loadDatasetFromDirectoryNow(rootHandle, writable));
+    async function loadDatasetFromDirectoryNow(rootHandle, writable=false){
       showLoading('Loading Dataset...','Scanning structure...');
       await storageReady;
       releaseFolderLock();
@@ -2405,18 +2416,19 @@ Generated: ${new Date().toISOString()}`;
       try{ imagesHandle = await rootHandle.getDirectoryHandle('Images'); }
       catch{ hideLoading(); alert('Missing required "Images" folder in the selected directory.'); return; }
 
-      try{ labelsHandle = await rootHandle.getDirectoryHandle('Labels'); }catch{}
-
-      try{ classFileHandle   = await rootHandle.getFileHandle('classes.txt'); }catch{ try{ classFileHandle   = await rootHandle.getFileHandle('classes.names'); }catch{} }
-      try{ statusJsonHandle  = await rootHandle.getFileHandle('image_status.json'); }catch{}
+      // Optional parts of the folder: a missing one is fine, any other error is reported.
+      const optional=async(get,label)=>{ try{ return await get(); }catch(e){ if(e?.name!=='NotFoundError'){ console.error(label,e); loadWarnings.push(`${label} could not be opened (${e.message||e}).`); } return null; } };
+      labelsHandle = await optional(()=>rootHandle.getDirectoryHandle('Labels'),'Labels/');
+      classFileHandle = await optional(()=>rootHandle.getFileHandle('classes.txt'),'classes.txt') || await optional(()=>rootHandle.getFileHandle('classes.names'),'classes.names');
+      statusJsonHandle = await optional(()=>rootHandle.getFileHandle('image_status.json'),'image_status.json');
       round=null; let roundError=null;
       try{
         const rh=await rootHandle.getFileHandle('round.json');
         const r=YoloCore.parseRoundJson(await (await rh.getFile()).text());
         if(r.ok){ round=r.round; r.warnings.forEach(w=>loadWarnings.push(w)); } else roundError=r.error;
       }catch(e){ if(e?.name!=='NotFoundError') roundError=`round.json could not be read (${e.message||e})`; }
-      try{ deletedTxtHandle  = await rootHandle.getFileHandle('deleted_list.txt'); }catch{}
-      try{ labeledTxtHandle  = await rootHandle.getFileHandle('labeled_list.txt'); }catch{}
+      deletedTxtHandle = await optional(()=>rootHandle.getFileHandle('deleted_list.txt'),'deleted_list.txt');
+      labeledTxtHandle = await optional(()=>rootHandle.getFileHandle('labeled_list.txt'),'labeled_list.txt');
 
       try{
         if(statusJsonHandle){
@@ -2468,7 +2480,7 @@ Generated: ${new Date().toISOString()}`;
       }
 
       let classesText=null;
-      if(classFileHandle?.name==='classes.txt'){ try{ classesText=await (await classFileHandle.getFile()).text(); }catch{} }
+      if(classFileHandle?.name==='classes.txt'){ try{ classesText=await (await classFileHandle.getFile()).text(); }catch(e){ console.error('classes.txt',e); loadWarnings.push(`classes.txt could not be read (${e.message||e}).`); } }
       if(!classFileHandle && round?.classes){ CLASS_NAMES=round.classes.slice(); rebuildClassUI(); }
       if(classFileHandle){
         try{
@@ -2572,7 +2584,9 @@ Generated: ${new Date().toISOString()}`;
       const overlay=$("dragOverlay");
       document.addEventListener('dragover', e=>{ e.preventDefault(); overlay.classList.add('active'); });
       document.addEventListener('dragleave', e=>{ if(!e.relatedTarget) overlay.classList.remove('active'); });
-      document.addEventListener('drop', async e=>{ e.preventDefault(); overlay.classList.remove('active'); await routeUploads([...e.dataTransfer.files]); });
+      document.addEventListener('drop', async e=>{ e.preventDefault(); overlay.classList.remove('active');
+        try{ await routeUploads([...e.dataTransfer.files]); }
+        catch(err){ console.error('Drop failed',err); hideLoading(); alert(`Could not load the dropped files (${err.message||err}).`); } });
 
       $("filterStatus").addEventListener('change', ()=>{ if(labelDatabase.isBuilt) applyFilters() });
       $("filterClass").addEventListener('change', ()=>{ if(labelDatabase.isBuilt) applyFilters() });

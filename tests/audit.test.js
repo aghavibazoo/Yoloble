@@ -323,4 +323,13 @@ test('the ZIP export works with no network (JSZip is inside index.html)', { skip
   } finally { await b.close(); }
 });
 
+test('a folder that fails to load takes the loading overlay down and says why', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await b.evaluate(`FileSystemFileHandle.prototype.getFile = function () { return Promise.reject(new DOMException('disk gone (simulated)', 'NotReadableError')); };`);
+  const err = await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory();
+    try { await YOLOUI._openFolder(await r.getDirectoryHandle('round')); return 'no error'; } catch (e) { return String(e.message); } })()`);
+  assert.match(err, /disk gone/);
+  assert.equal(await b.evaluate(`getComputedStyle(document.getElementById('loadingOverlay')).display`), 'none');
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
