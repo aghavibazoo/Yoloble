@@ -10,6 +10,8 @@ node --test
 
 - `tests/core.test.js` unit-tests the pure logic in the `<script id="yoloble-core">` block of `index.html` (label parsing and writing, validation, status rules, recovery planning, class search, `round.json` parsing). The test loads that block straight from `index.html`, so it tests the shipped code.
 - `tests/e2e.test.js` drives `index.html` in headless Chrome or Edge over the DevTools protocol (`tests/cdp.js`, no Playwright needed). The round folder is a copy of `samples/round_sample` in the browser's origin-private file system, which gives Yoloble a real read-write folder handle, so saving goes through the same code as **Choose Folder**. Crashes are simulated by killing the browser and restarting it on the same profile. Skipped if no Chromium browser is found (set `CHROME_PATH`).
+- `tests/audit.test.js` holds a regression test for each fix from the review-station audit; `slowDisk()` in `tests/helpers.js` delays every write so save races can be reproduced, and `newTab()` in `tests/cdp.js` opens a second tab in the same browser.
+- `tests/parity/`: 1521 label files with the verdicts of irs's own `check_label_bytes`; `core.test.js` requires Yoloble to agree on every one. Regenerate with `node tests/parity/make_cases.js`, then `tests/parity/irs_verdicts.py` from the irs environment.
 - `tests/acceptance.test.js` is the design section 12 acceptance run on a generated 50-frame round (needs Python with Pillow).
 - `tests/irs_check_round.py` checks a finished round with irs's own label checker (run it from the irs environment).
 

@@ -96,6 +96,7 @@ node --test                            # all tests
 node --test tests/core.test.js         # unit tests of the core logic (milliseconds)
 node --test tests/e2e.test.js          # end-to-end in headless Chrome or Edge
 node --test tests/acceptance.test.js   # 50-frame round, crash and resume (needs Python + Pillow)
+node --test tests/audit.test.js        # regression tests for the review-station audit (slow disk, two tabs, ...)
 ```
 
 The pure logic lives in `<script id="yoloble-core">` in `index.html`; the unit tests load that block directly. `tools/make_sample_round.py` writes synthetic rounds; `samples/round_sample` is one. The manual checklist is [`docs/TESTING.md`](docs/TESTING.md).
