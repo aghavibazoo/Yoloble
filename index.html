@@ -113,6 +113,11 @@
     .link{color:#8ab4f8;cursor:pointer;text-decoration:underline}
     .pre-tag{font-size:11px;padding:1px 6px;border-radius:8px;border:1px dashed #bbb;color:#ddd;margin-left:6px}
     .pre-tag.low{border-color:#ffb74d;color:#ffb74d}
+    .reason-banner{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:20;display:none;align-items:center;gap:10px;background:rgba(20,20,20,.9);border:1px solid #555;border-radius:6px;padding:6px 14px;font-size:15px;max-width:calc(100% - 80px);pointer-events:auto}
+    .reason-banner.show{display:flex}
+    .reason-chip{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:10px;white-space:nowrap;color:#fff}
+    .reason-chip.rare_class{background:#8e44ad}.reason-chip.uncertainty{background:#d35400}.reason-chip.disagreement{background:#c0392b}.reason-chip.random{background:#5d6d7e}.reason-chip.other{background:#34495e}.reason-chip.missing{background:#a32020}
+    .round-info{font-size:13px;color:#bbb;white-space:nowrap}
     .picker{position:absolute;left:50%;top:40px;transform:translateX(-50%);z-index:50;background:#2d2d2d;border:1px solid #666;border-radius:6px;box-shadow:0 8px 30px rgba(0,0,0,.6);width:340px;padding:10px;display:none}
     .picker.show{display:block}
     .picker .title{font-size:12px;color:#bbb;margin-bottom:6px}
@@ -141,6 +146,7 @@
         <button class="btn" onclick="YOLOUI.exportStats()" title="Export dataset statistics">Stats</button>
       </div>
       <div class="right-controls info">
+        <span id="roundInfo" class="round-info"></span>
         <span id="saveState" class="save-state" title="Where your changes are saved">No folder open</span>
         <div class="image-nav">
           <button class="nav-btn" id="prevBtn" onclick="YOLOUI.previousImage()" disabled>◀ Prev (A)</button>
@@ -185,6 +191,7 @@
     <div class="canvas-container">
       <div class="drag-overlay" id="dragOverlay">Drop images or lists here</div>
       <canvas id="canvas"></canvas>
+      <div class="reason-banner" id="reasonBanner" role="note"><span class="reason-chip" id="reasonChip"></span><span id="reasonText"></span></div>
       <div class="picker" id="classPicker">
         <div class="title" id="classPickerTitle"></div>
         <input class="class-search" id="classPickerInput" placeholder="Type a class name or ID, Enter to pick" autocomplete="off" spellcheck="false">
@@ -1393,11 +1400,31 @@
       $("progressText").textContent = p.total ? `${p.reviewed} of ${p.total} reviewed`+(p.deleted?` · ${p.deleted} deleted`:'') : '';
       $("progR").style.width = p.total ? `${100*p.reviewed/p.total}%` : '0';
       $("progD").style.width = p.total ? `${100*p.deleted/p.total}%` : '0';
+      updateReasonBanner();
       const pill=$("statusPill"), name=boxesOwner;
       if(name===null){ pill.style.display='none'; return; }
       const st=statusOfName(name); pill.style.display='';
       if(st==='reviewed'){ pill.className='status-pill reviewed'; pill.textContent='Reviewed ✓'; pill.title='Click to mark this image as not reviewed'; pill.onclick=unmarkReviewed; }
       else { pill.className='status-pill todo'; pill.textContent='Not reviewed'; pill.title=st==='labeled'?'Has boxes (pre-labels or edits) but nobody has confirmed them yet':'Not reviewed yet'; pill.onclick=null; }
+    }
+    // Why irs selected this frame (round.json reason / reason_text).
+    const REASON_LABELS={rare_class:'Rare class', uncertainty:'Low confidence', disagreement:'Track disagreement', random:'Random sample'};
+    function updateReasonBanner(){
+      const banner=$("reasonBanner"), chip=$("reasonChip"), text=$("reasonText"), info=$("roundInfo");
+      info.textContent = round ? [round.roundId!==null?`Round ${round.roundId}`:'Round', round.modelId?`model ${round.modelId}`:''].filter(Boolean).join(' · ') : '';
+      info.title = round ? `round.json format ${round.formatVersion}${round.created?`, queued ${round.created}`:''}` : '';
+      if(!round || boxesOwner===null){ banner.classList.remove('show'); return; }
+      const e=round.images.get(boxesOwner);
+      banner.classList.add('show');
+      if(!e){
+        chip.className='reason-chip missing'; chip.textContent='Not in round'; text.textContent='This image is not listed in round.json';
+        banner.title='irs ingest only accepts images that belong to the round.'; return;
+      }
+      const known=REASON_LABELS[e.reason];
+      chip.className='reason-chip '+(known?e.reason:'other'); chip.textContent=known || e.reason || 'Selected';
+      text.textContent=e.reasonText || (known ? '' : '(no reason given)');
+      const sc=Object.entries(e.scores||{}).filter(([,v])=>typeof v==='number').map(([k,v])=>`${k} ${v.toFixed(2)}`).join(' · ');
+      banner.title=sc ? `Selection scores: ${sc}` : '';
     }
     function markReviewed(){ return queueNav(()=>markReviewedNow()); }
     async function markReviewedNow({advance=true}={}){

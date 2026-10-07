@@ -292,6 +292,33 @@ test('pre-labels: not trusted when the file no longer matches round.json, absent
   assert.match(await b.evaluate(`document.getElementById('noticeBannerMsg').textContent`), /format_version 2, but this Yoloble reads version 1/);
 }));
 
+test('reason banner shows why each frame was selected, and the round in the header', { skip }, () => withBrowser(async b => {
+  const banner = () => b.evaluate(`({ show: document.getElementById('reasonBanner').classList.contains('show'), chip: document.getElementById('reasonChip').textContent, text: document.getElementById('reasonText').textContent, title: document.getElementById('reasonBanner').title, round: document.getElementById('roundInfo').textContent })`);
+  const files = ORIGINAL();
+  const rj = JSON.parse(files['round.json']);
+  delete rj.images['clark_ave_01__a1b2c3d4__f023836.jpg'];
+  files['round.json'] = Buffer.from(JSON.stringify(rj));
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  assert.deepEqual(await banner(), { show: true, chip: 'Rare class', text: 'rare class: 3ax Bus', title: 'Selection scores: rarity 0.82 · uncertainty 0.00 · disagreement 0.00', round: 'Round 3 · model m0005' });
+  await b.evaluate('YOLOUI._gotoIndex(2)');
+  await b.waitFor('YOLOUI._snapshot().owner === YOLOUI._snapshot().name && YOLOUI._snapshot().index === 2');
+  let r = await banner();
+  assert.equal(r.chip, 'Low confidence');
+  assert.equal(r.text, 'low confidence: 2 boxes between 0.2 and 0.6');
+  await b.evaluate('YOLOUI._gotoIndex(3)');
+  await b.waitFor('YOLOUI._snapshot().owner === YOLOUI._snapshot().name && YOLOUI._snapshot().index === 3');
+  r = await banner();
+  assert.equal(r.chip, 'Not in round');
+
+  const legacy = ORIGINAL(); delete legacy['round.json'];
+  await putFolder(b, 'legacy', legacy);
+  await openRound(b, 'legacy');
+  r = await banner();
+  assert.equal(r.show, false);
+  assert.equal(r.round, '');
+}));
+
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._loadReadOnlyForTests(await r.getDirectoryHandle('round')); })()`);

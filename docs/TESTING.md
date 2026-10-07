@@ -78,3 +78,8 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Add a line to a pre-label file in Notepad before opening: that image's boxes are all solid (its file no longer matches `prelabel_conf`), the other images are unaffected.
 - [ ] A folder without `round.json` shows no dashed boxes and works as before. A `round.json` with `"format_version": 2` gives a yellow banner saying this Yoloble reads version 1, and no dashed boxes.
 - [ ] In a round folder, **Edit Classes** > **+ Add** is refused (the class list comes from `round.json`).
+
+### Reason banner
+
+- [ ] On the sample round a banner above the image says why it was picked (**RARE CLASS** rare class: 3ax Bus; **LOW CONFIDENCE** …; **TRACK DISAGREEMENT** …; **RANDOM SAMPLE** random sample). Hovering it shows the selection scores. The header shows **Round 3 · model m0005**.
+- [ ] An image missing from `round.json` shows **NOT IN ROUND**. A folder without `round.json` shows no banner and no round in the header.
