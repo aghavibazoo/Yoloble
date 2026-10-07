@@ -1179,9 +1179,14 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // failing, the file keeps the image's status as it is on disk. (Otherwise
     // a failed label write could leave "reviewed" next to the old pre-labels.)
     const labelUnsaved=n=>save.pendingLabels.has(n) || save.inFlight.has(n) || save.fileErrors.has(n);
-    const statusForFile=n=> folder.extraStatus.get(n)
-      ?? (labelUnsaved(n) ? save.diskStatus.get(n) : undefined)
-      ?? statusMap.get(norm(n)) ?? 'unlabeled';
+    // Only a decision (reviewed, deleted) is held back; a step away from one
+    // (un-reviewing) is written at once, since it never vouches for labels.
+    const statusForFile=n=>{
+      if(folder.extraStatus.has(n)) return folder.extraStatus.get(n);
+      const mem=statusMap.get(norm(n)) ?? 'unlabeled';
+      if(YoloCore.isDecided(mem) && labelUnsaved(n)) return save.diskStatus.get(n) ?? mem;
+      return mem;
+    };
     function statusFileText(){ return YoloCore.serializeStatusJson([...folder.imageNames, ...folder.extraStatus.keys()], statusForFile); }
     async function statusFileHandle(){ try{ return await folder.root.getFileHandle('image_status.json'); }catch(e){ if(e?.name==='NotFoundError') return null; throw e; } }
     async function writeStatusFile(){

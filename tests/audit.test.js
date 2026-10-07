@@ -649,4 +649,18 @@ test('NEW-3: the ZIP export carries the statuses of the labels it contains (from
   assert.deepEqual(r, { st: 'reviewed', lines: 4 });
 }));
 
+test('NEW-4: un-reviewing is written at once, even while the image\'s label file cannot be written', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await b.key(' '); await loaded(b, 1);
+  await settle(b);
+  assert.equal(await statusOnDisk(b), 'reviewed');
+  await b.key('a'); await loaded(b, 0); await b.evaluate('YOLOUI.fitToScreen()');
+  await lockLabel(b);
+  await b.evaluate(`document.getElementById('statusPill').click()`);        // not reviewed any more
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });              // an edit that cannot be saved
+  await sleep(1500);
+  assert.notEqual(await statusOnDisk(b), 'reviewed', 'the folder must not keep vouching for these labels');
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
