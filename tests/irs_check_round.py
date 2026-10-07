@@ -7,21 +7,22 @@ Run with the irs environment, so the label checks are irs's own code:
 Checks: the layout, format_version, classes.txt against round.json, every
 image listed in round.json and image_status.json with a known status, every
 image reviewed or deleted, and every label file of a reviewed image through
-irs.dataset.labels.check_label_bytes (with the label rules from the irs
-config). Prints the problems and exits 1 if there are any. This is a test
-aid, not a replacement for irs ingest.
+irs.dataset.labels.check_label_bytes, with the label rules (edge tolerance,
+duplicate IoU) loaded from the irs config (configs/pipeline.yaml, or
+$IRS_CONFIG). Prints the problems and exits 1 if there are any. This is a
+test aid, not a replacement for irs ingest.
 """
 
 import json
 import sys
 from pathlib import Path
 
-from irs.config import LabelRulesConfig
+from irs.config import load_config
 from irs.dataset.labels import check_label_bytes
 
 STATUSES = {"unlabeled", "labeled", "reviewed", "deleted"}
 SUPPORTED_FORMATS = {1}
-RULES = LabelRulesConfig(edge_tolerance=1e-6, duplicate_box_iou=0.95)  # configs/pipeline.yaml dataset.label_rules
+RULES = load_config().config.dataset.labels
 
 
 def check(folder: Path) -> list[str]:
