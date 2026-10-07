@@ -143,4 +143,55 @@ test('M5: an image_status.json Yoloble cannot read is never overwritten without 
   assert.equal(lineCount(disk[`Labels/${IMG0}.txt`]), 4, 'the edit made meanwhile is saved too');
 }));
 
+async function writeOpfs(b, dir, rel, text) {
+  await b.evaluate(`(async () => { let d = await (await navigator.storage.getDirectory()).getDirectoryHandle(${JSON.stringify(dir)});
+    const parts = ${JSON.stringify(rel)}.split('/'); for (const p of parts.slice(0, -1)) d = await d.getDirectoryHandle(p);
+    const w = await (await d.getFileHandle(parts.at(-1), { create: true })).createWritable(); await w.write(${JSON.stringify(text)}); await w.close(); })()`);
+}
+
+test('M2: a second tab on the same folder is read-only, never writes, and leaves the other tab\'s temporary files alone', { skip }, () => withBrowser(async a => {
+  const orig = ORIGINAL();
+  await putFolder(a, 'round', orig);
+  await openRound(a);
+  assert.match((await snap(a)).saveState, /All changes saved/);
+  await writeOpfs(a, 'round', 'image_status.json.crswap', 'in progress');
+  const b = await a.newTab();
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"'); await b.focus();
+  await openRound(b);
+  const s = await snap(b);
+  assert.match(s.saveState, /Open in another window/);
+  assert.match(await b.evaluate(`document.getElementById('saveBannerMsg').textContent`), /open in another Yoloble tab or window.*read-only/);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await b.key(' ', { shift: true });
+  await sleep(800);
+  let disk = await getFolder(a, 'round');
+  assert.ok(disk[`Labels/${IMG0}.txt`].equals(orig[`Labels/${IMG0}.txt`]), 'second tab wrote nothing');
+  assert.ok(disk['image_status.json'].equals(orig['image_status.json']));
+  assert.ok(disk['image_status.json.crswap'], 'temporary file of the first tab not deleted');
+  // The first tab still saves normally.
+  await a.focus();
+  await drag(a, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await settle(a);
+  disk = await getFolder(a, 'round');
+  assert.equal(lineCount(disk[`Labels/${IMG0}.txt`]), 4);
+}));
+
+test('M2: a status changed by someone else after Yoloble read the file is merged, not overwritten', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  const other = 'clark_ave_01__a1b2c3d4__f016352.jpg';
+  const st = JSON.parse((await getFolder(b, 'round'))['image_status.json']);
+  st.find(r => r.name === other).status = 'deleted';
+  await sleep(20);
+  await writeOpfs(b, 'round', 'image_status.json', JSON.stringify(st, null, 2) + '\n');   // e.g. another reviewer
+  await b.key(' ');
+  await loaded(b, 1);
+  await settle(b);
+  const now = Object.fromEntries(JSON.parse((await getFolder(b, 'round'))['image_status.json']).map(r => [r.name, r.status]));
+  assert.equal(now[`${IMG0}.jpg`], 'reviewed', 'this window\'s review');
+  assert.equal(now[other], 'deleted', 'the other change kept');
+  await b.waitFor('YOLOUI._snapshot().count === 11');
+  assert.match(await b.evaluate(`document.getElementById('noticeBannerMsg').textContent`), /changed outside this window/);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

@@ -866,10 +866,10 @@
 
     function persistStatus(){ scheduleSessionSave(); }
     let sessionTimer=null, sessionSaving=null, sessionAgain=false;
-    function scheduleSessionSave(delay=50){ if(!session) return; clearTimeout(sessionTimer); sessionTimer=setTimeout(saveSessionNow,delay); }
+    function scheduleSessionSave(delay=50){ if(!session || session.readOnly) return; clearTimeout(sessionTimer); sessionTimer=setTimeout(saveSessionNow,delay); }
     function saveSessionNow(){
       clearTimeout(sessionTimer);
-      if(!session) return Promise.resolve();
+      if(!session || session.readOnly) return Promise.resolve();
       if(sessionSaving){ sessionAgain=true; return sessionSaving; }
       sessionSaving=(async()=>{
         try{
@@ -910,6 +910,14 @@
         else rec=await idbGet('sessions',key);
       }catch(e){ console.error('Could not read the browser backup',e); }
       session={key:rec?.key || key || `folder:${name}:${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`, kind, name, handle:handle||null, names, edited:new Set(), savedLabels:rec?.labels||{}};
+      // Only one Yoloble window may work on a folder: a second one gets no
+      // lock, opens it read-only, keeps no backup and offers no recovery (the
+      // first window owns both).
+      if(kind==='folder' && !(await acquireFolderLock(session.key))){
+        session.readOnly=true;
+        if(folder){ folder.writable=false; folder.otherWindow=true; }
+        return rec?.current ?? null;
+      }
       if(!rec) return null;
       const plan=YoloCore.planRecovery(rec,{labelText:n=>save.diskText.has(n)?save.diskText.get(n):null, status:n=>save.diskStatus.get(n)??null});
       const nl=plan.labels.length, ns=plan.statuses.length;
@@ -965,6 +973,21 @@
       }
     }
 
+    // Web Locks are shared by every tab and window of this browser profile.
+    let releaseLock=null;
+    function releaseFolderLock(){ if(releaseLock){ releaseLock(); releaseLock=null; } }
+    function acquireFolderLock(key){
+      releaseFolderLock();
+      if(!navigator.locks) return Promise.resolve(true);
+      return new Promise(res=>{
+        navigator.locks.request('yoloble:'+key,{ifAvailable:true},lock=>{
+          if(!lock){ res(false); return; }
+          res(true);
+          return new Promise(r=>{ releaseLock=r; }); // held until another folder is opened or the tab closes
+        }).catch(e=>{ console.error('Web Lock failed',e); res(true); });
+      });
+    }
+
     function showNotice(msg){ $("noticeBannerMsg").textContent=msg; $("noticeBanner").className='banner warn show'; }
     function hideNotice(){ $("noticeBanner").className='banner warn'; }
     // user=false for statuses derived while loading; those are written with the next real change.
@@ -988,12 +1011,12 @@
     const SAVE_DEBOUNCE_MS=400, SAVE_RETRY_MS=5000;
     // diskText / diskStatus: what the folder holds, as last read or written.
     // diskRaw: label file text exactly as read (folders only), badEncoding: files that are not UTF-8.
-    const save={pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskRaw:new Map(), badEncoding:new Set(), diskStatus:new Map(), forceRewrite:new Set(), inFlight:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
+    const save={statusStamp:null, pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskRaw:new Map(), badEncoding:new Set(), diskStatus:new Map(), forceRewrite:new Set(), inFlight:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
     let flushPromise=null;
 
     function resetSaveState(){
       clearTimeout(save.timer); clearTimeout(save.retry);
-      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.inFlight.clear(); save.diskRaw.clear(); save.badEncoding.clear(); save.error=null; save.lastSaved=null;
+      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.inFlight.clear(); save.diskRaw.clear(); save.badEncoding.clear(); save.statusStamp=null; save.error=null; save.lastSaved=null;
       hideSaveBanner(); updateSaveIndicator();
     }
     const unsavedCount=()=>save.pendingLabels.size+(save.pendingStatus?1:0);
@@ -1032,10 +1055,36 @@
     }
     const statusForFile=n=> folder.extraStatus.get(n) ?? statusMap.get(norm(n)) ?? 'unlabeled';
     function statusFileText(){ return YoloCore.serializeStatusJson([...folder.imageNames, ...folder.extraStatus.keys()], statusForFile); }
+    async function statusFileHandle(){ try{ return await folder.root.getFileHandle('image_status.json'); }catch(e){ if(e?.name==='NotFoundError') return null; throw e; } }
     async function writeStatusFile(){
+      // Someone else (another program, a window without the lock) changed the
+      // file since Yoloble read or wrote it: take their changes in first.
+      const fh=await statusFileHandle();
+      if(fh){ const f=await fh.getFile(); if(f.lastModified!==save.statusStamp) mergeStatusFromDisk(await f.text()); }
       const written=new Map(folder.imageNames.map(n=>[n,statusForFile(n)]));
       await writeTextFile(folder.root,'image_status.json',statusFileText());
       written.forEach((st,n)=>save.diskStatus.set(n,st));
+      save.statusStamp=(await (await statusFileHandle())?.getFile())?.lastModified ?? null;
+    }
+    // A status changed on disk is kept unless this window changed the same
+    // image's status itself (then this window's decision wins).
+    function mergeStatusFromDisk(text){
+      const r=YoloCore.parseStatusJson(text);
+      if(r.error) throw new Error(`image_status.json was changed outside Yoloble and cannot be read (${r.error}); it was not overwritten`);
+      const auto=new Set(['unlabeled','labeled',null,undefined]), imgs=new Map(folder.imageNames.map(n=>[norm(n),n])), adopted=[];
+      r.entries.forEach((st,n)=>{
+        const img=imgs.get(norm(n));
+        if(!img){ folder.extraStatus.set(n,st); return; }
+        const seen=save.diskStatus.get(img) ?? null, mine=statusOfName(img);
+        const unchangedHere = mine===seen || (auto.has(mine) && auto.has(seen));
+        if(st!==seen && unchangedHere && st!==mine){ statusMap.set(norm(img),st); adopted.push(img); }
+        save.diskStatus.set(img,st);
+      });
+      if(adopted.length){
+        console.info('Statuses changed outside Yoloble, kept:', adopted);
+        showNotice(`image_status.json was changed outside this window; its changes for ${adopted.length} image${adopted.length>1?'s':''} were kept (${adopted.slice(0,3).join(', ')}${adopted.length>3?', …':''}).`);
+        queueNav(async()=>{ applyDeletedFilter(); if(imageMetadata.length && indexOfName(boxesOwner)<0) await loadCurrentImage(); updateUI(); });
+      }
     }
 
     function noteLabelsChanged(name,arr){
@@ -1119,10 +1168,12 @@
     }
 
     function showSaveBanner(){
-      const b=$("saveBanner"), broken=!!folder.statusProblem, perm=!broken && (!folder.writable || isPermissionError(save.error));
+      const b=$("saveBanner"), broken=!!folder.statusProblem, perm=!broken && !folder.otherWindow && (!folder.writable || isPermissionError(save.error));
       b.className='banner show '+(folder.writable?'error':'warn');
       $("saveBannerReplace").style.display = broken && folder.statusRaw ? '' : 'none';
-      $("saveBannerMsg").textContent = broken
+      $("saveBannerMsg").textContent = folder.otherWindow
+        ? `"${folder.name}" is open in another Yoloble tab or window. So that the two cannot overwrite each other's work, this one is read-only: changes here are NOT saved. Close the other one, then open the folder here again.`
+        : broken
         ? `${folder.statusProblem}. To keep the reviews it may hold, "${folder.name}" was opened read-only: changes are NOT saved. Fix the file and reopen the folder, or replace it with the statuses shown here (the old file is kept as ${STATUS_BACKUP}).`
         : !folder.writable
         ? `"${folder.name}" was opened read-only, so changes are NOT saved into it. Allow saving, or use Download Bundle before you close Yoloble.`
@@ -1137,6 +1188,7 @@
       const el=$("saveState"); if(!el) return;
       const n=unsavedCount(); let cls='', text, title;
       if(!folder){ text=imageMetadata.length?'Not saving to a folder':'No folder open'; title='Open a folder with Choose Folder to save into it. Otherwise use Download Bundle.'; }
+      else if(folder.otherWindow){ cls='readonly'; text='Open in another window: not saving'; title=`"${folder.name}" is open in another Yoloble tab or window.`; }
       else if(!folder.writable){ cls='readonly'; text='Read-only: not saving'; title=`"${folder.name}" was opened without write access.`; }
       else if(save.error){ cls='error'; text=`Save failed (${n} unsaved)`; title=String(save.error?.message||save.error); }
       else if(flushPromise){ cls='saving'; text='Saving…'; title=`Writing to "${folder.name}"`; }
@@ -1553,6 +1605,7 @@
     async function loadImagesOptimized(files){
       showLoading('Analyzing Images...','Preparing image metadata...');
       if(!(await confirmLeaveCurrent())){ hideLoading(); return; }
+      releaseFolderLock();
       folder=null; session=null; round=null; resetSaveState(); statusMap=new Map(legacyStatus);
       imageMetadata=[]; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); removedImages.clear(); boxesOwner=null; boxes=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false;
       uploadedNames=files.map(f=>f.name);
@@ -2288,6 +2341,7 @@ Generated: ${new Date().toISOString()}`;
     async function loadDatasetFromDirectory(rootHandle, writable=false){
       showLoading('Loading Dataset...','Scanning structure...');
       await storageReady;
+      releaseFolderLock();
       folder=null; session=null; round=null; resetSaveState(); statusMap=new Map(legacyStatus);
       imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); removedImages.clear(); boxesOwner=null; boxes=[];
       const loadWarnings=[];
@@ -2314,7 +2368,7 @@ Generated: ${new Date().toISOString()}`;
       try{
         if(statusJsonHandle){
           let bytes=null;
-          try{ bytes=new Uint8Array(await (await statusJsonHandle.getFile()).arrayBuffer()); }
+          try{ const sf=await statusJsonHandle.getFile(); save.statusStamp=sf.lastModified; bytes=new Uint8Array(await sf.arrayBuffer()); }
           catch(e){ statusProblem=`image_status.json could not be read (${e.message||e})`; }
           if(bytes){
             const d=YoloCore.decodeUtf8(bytes), r=YoloCore.parseStatusJson(d.text);
@@ -2365,10 +2419,6 @@ Generated: ${new Date().toISOString()}`;
         }catch{}
       }
 
-      if(writable){
-        const removed=await removeStaleSwapFiles(rootHandle, labelsHandle).catch(()=>[]);
-        if(removed.length) console.info('Removed temporary files left by an interrupted save:', removed);
-      }
       // Entries for files that are not in Images/ are kept as they are; entries
       // that are only a case variant of an image's name are dropped (no duplicates).
       const lowerNames=new Set(allImageNames.map(norm));
@@ -2407,6 +2457,10 @@ Generated: ${new Date().toISOString()}`;
 
       updateLoading(85,'Checking for unsaved work...');
       const resume=await startSession({kind:'folder', name:rootHandle.name, handle:rootHandle, names:allImageNames});
+      if(folder.writable){ // holds the folder lock: no other window is writing now
+        const removed=await removeStaleSwapFiles(rootHandle, labelsHandle).catch(e=>{ console.error('Cleaning temporary files failed',e); return []; });
+        if(removed.length) console.info('Removed temporary files left by an interrupted save:', removed);
+      }
       applyPrelabelState();
       if(roundError) showNotice(roundError+' Model boxes and reasons are not shown.');
       applyDeletedFilter();

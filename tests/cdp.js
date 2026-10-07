@@ -19,22 +19,8 @@ function findChrome() { return CANDIDATES.find(p => { try { return fs.statSync(p
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-async function launch({ userDataDir, port = 9300 + Math.floor(Math.random() * 500) } = {}) {
-  const exe = findChrome();
-  if (!exe) throw new Error('No Chromium-based browser found (set CHROME_PATH)');
-  const dir = userDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'yoloble-e2e-'));
-  const proc = spawn(exe, [
-    '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${dir}`,
-    '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--window-size=1600,1000', 'about:blank',
-  ], { stdio: 'ignore' });
-  let targets;
-  for (let i = 0; i < 100; i++) {
-    try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); if (targets.length) break; } catch {}
-    await sleep(100);
-  }
-  if (!targets) { proc.kill(); throw new Error('browser did not start'); }
-  const page = targets.find(t => t.type === 'page');
-  const ws = new WebSocket(page.webSocketDebuggerUrl);
+async function connectPage(wsUrl) {
+  const ws = new WebSocket(wsUrl);
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
   let id = 0; const pending = new Map(); const listeners = [];
   ws.onmessage = ev => {
@@ -78,18 +64,45 @@ async function launch({ userDataDir, port = 9300 + Math.floor(Math.random() * 50
     const r = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(file, Buffer.from(r.data, 'base64'));
   }
+  return { ws, send, evaluate, goto, waitFor, key, mouse, screenshot, consoleLog, dialogs, setDialogAccept: v => { dialogAccept = v; },
+    focus: () => send('Page.bringToFront') };
+}
+
+async function launch({ userDataDir, port = 9300 + Math.floor(Math.random() * 500) } = {}) {
+  const exe = findChrome();
+  if (!exe) throw new Error('No Chromium-based browser found (set CHROME_PATH)');
+  const dir = userDataDir || fs.mkdtempSync(path.join(os.tmpdir(), 'yoloble-e2e-'));
+  const proc = spawn(exe, [
+    '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${dir}`,
+    '--no-first-run', '--no-default-browser-check', '--disable-gpu', '--window-size=1600,1000', 'about:blank',
+  ], { stdio: 'ignore' });
+  let targets;
+  for (let i = 0; i < 100; i++) {
+    try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); if (targets.length) break; } catch {}
+    await sleep(100);
+  }
+  if (!targets) { proc.kill(); throw new Error('browser did not start'); }
+  const first = await connectPage(targets.find(t => t.type === 'page').webSocketDebuggerUrl);
+  const tabs = [first];
   // Simulates a crash: the browser process is killed without shutting down.
   async function kill() {
-    try { ws.close(); } catch {}
+    for (const t of tabs) { try { t.ws.close(); } catch {} }
     proc.kill('SIGKILL');
     await new Promise(r => { if (proc.exitCode !== null) return r(); proc.on('exit', r); setTimeout(r, 5000); });
     await sleep(1500); // let child processes release the profile
   }
   async function close() {
-    try { await send('Browser.close'); } catch {}
+    try { await first.send('Browser.close'); } catch {}
     await new Promise(r => { if (proc.exitCode !== null) return r(); proc.on('exit', r); setTimeout(r, 5000); });
   }
-  return { send, evaluate, goto, waitFor, key, mouse, screenshot, close, kill, consoleLog, dialogs, setDialogAccept: v => { dialogAccept = v; }, userDataDir: dir };
+  // Another tab in the same browser (same profile, storage and locks).
+  async function newTab() {
+    const t = await (await fetch(`http://127.0.0.1:${port}/json/new?about:blank`, { method: 'PUT' })).json();
+    const tab = await connectPage(t.webSocketDebuggerUrl);
+    tabs.push(tab);
+    return tab;
+  }
+  return { ...first, close, kill, newTab, userDataDir: dir };
 }
 
 module.exports = { launch, findChrome, sleep };
