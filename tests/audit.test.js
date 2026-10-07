@@ -332,4 +332,27 @@ test('a folder that fails to load takes the loading overlay down and says why', 
   assert.equal(await b.evaluate(`getComputedStyle(document.getElementById('loadingOverlay')).display`), 'none');
 }));
 
+test('keyboard: shortcuts work after clicking a checkbox, Ctrl+A does not change image, the dialog keeps focus', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  // Click the Class names checkbox (as a mouse user would), then D.
+  const r = await b.evaluate(`(() => { const r = document.getElementById('showClassNames').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; })()`);
+  await b.mouse('mousePressed', r.x, r.y); await b.mouse('mouseReleased', r.x, r.y);
+  await b.key('d');
+  await loaded(b, 1);
+  await b.key('a', { ctrl: true });
+  await sleep(300);
+  assert.equal((await snap(b)).index, 1, 'Ctrl+A is the browser\'s');
+  await b.evaluate('YOLOUI.finishRound()');
+  assert.equal(await b.evaluate(`document.querySelector('#modalBg .modal').getAttribute('aria-labelledby')`), 'modalTitle');
+  for (let i = 0; i < 8; i++) {
+    await b.key('Tab', { code: 'Tab', keyCode: 9 });
+    assert.ok(await b.evaluate(`!!document.activeElement.closest('#modalBg')`), 'focus stays in the dialog');
+  }
+  await b.key('d');
+  assert.equal((await snap(b)).index, 1, 'keys do nothing to the image while the dialog is open');
+  await b.key('Escape');
+  assert.equal(await b.evaluate(`document.getElementById('modalBg').classList.contains('show')`), false);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

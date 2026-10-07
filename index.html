@@ -358,7 +358,7 @@
     </div>
   </div>
 
-  <div class="modal-bg" id="modalBg"><div class="modal" role="dialog" aria-modal="true"><h2 id="modalTitle"></h2><div class="body" id="modalBody"></div><div class="actions" id="modalActions"></div></div></div>
+  <div class="modal-bg" id="modalBg"><div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" aria-describedby="modalBody"><h2 id="modalTitle"></h2><div class="body" id="modalBody"></div><div class="actions" id="modalActions"></div></div></div>
   <div class="toast" id="toast" role="status"></div>
 
   <div id="loadingOverlay" class="loading-overlay">
@@ -2158,13 +2158,30 @@ https://github.com/nodeca/pako/blob/main/LICENSE
         b.onclick=()=>{ t.classList.remove('show'); action.fn(); }; t.appendChild(b); }
       t.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.classList.remove('show'),ms);
     }
+    let focusBeforeModal=null;
     function showModal(title, bodyNode, buttons){
+      if(!modalOpen()) focusBeforeModal=document.activeElement;
       $("modalTitle").textContent=title; const b=$("modalBody"); b.innerHTML=''; b.appendChild(bodyNode);
+      b.querySelectorAll('.link').forEach(l=>{ l.tabIndex=0; l.setAttribute('role','link'); l.addEventListener('keydown',ev=>{ if(ev.key==='Enter'){ ev.preventDefault(); l.click(); } }); });
       const a=$("modalActions"); a.innerHTML='';
       buttons.forEach(({label,primary,onClick})=>{ const btn=document.createElement('button'); btn.className='btn'+(primary?'':' btn-plain'); btn.textContent=label; btn.onclick=()=>{ hideModal(); onClick?.(); }; a.appendChild(btn); });
       $("modalBg").classList.add('show'); a.lastChild?.focus({preventScroll:true}); $("modalBg").querySelector('.modal').scrollTop=0;
     }
-    function hideModal(){ $("modalBg").classList.remove('show'); }
+    function hideModal(){
+      $("modalBg").classList.remove('show');
+      if(focusBeforeModal?.isConnected && focusBeforeModal!==document.body) focusBeforeModal.focus({preventScroll:true});
+      focusBeforeModal=null;
+    }
+    // While the dialog is open: Esc closes it, Tab stays inside it, other keys do nothing to the image.
+    function modalKey(e){
+      if(e.key==='Escape'){ e.preventDefault(); hideModal(); return; }
+      if(e.key!=='Tab') return;
+      const items=[...document.querySelectorAll('#modalBg .modal button, #modalBg .modal [tabindex="0"]')];
+      if(!items.length){ e.preventDefault(); return; }
+      const i=items.indexOf(document.activeElement);
+      e.preventDefault();
+      items[(i<0 ? 0 : i+(e.shiftKey?-1:1)+items.length)%items.length].focus();
+    }
     const modalOpen=()=>$("modalBg").classList.contains('show');
 
     function fitToScreen(){
@@ -2562,6 +2579,8 @@ Generated: ${new Date().toISOString()}`;
       canvas.addEventListener('contextmenu', e=>e.preventDefault());
       document.addEventListener('keydown', onKeyDown);
       document.addEventListener('click', e=>{ const b=e.target.closest?.('button'); if(b && !b.closest('.modal')) b.blur(); });
+      // A checkbox or list keeps no focus after a change, so the shortcuts work at once.
+      document.addEventListener('change', e=>{ if(e.target.matches?.('input[type=checkbox], select')) e.target.blur(); });
 
       const overlay=$("dragOverlay");
       document.addEventListener('dragover', e=>{ e.preventDefault(); overlay.classList.add('active'); });
@@ -2575,16 +2594,23 @@ Generated: ${new Date().toISOString()}`;
       $("filterOperator").addEventListener('change', ()=>{ if(labelDatabase.isBuilt) applyFilters() });
     }
 
+    // Keys belong to a text field while one has focus; everywhere else (buttons,
+    // checkboxes, lists) the shortcuts work.
+    const isTextEntry=t=>!!t && (t.isContentEditable || t.tagName==='TEXTAREA' ||
+      (t.tagName==='INPUT' && !['checkbox','radio','button','submit','reset','range','color','file','image'].includes(t.type)));
     function onKeyDown(e){
-      if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.type==='checkbox') return;
-      if(modalOpen()){ if(e.key==='Escape') hideModal(); return; }
+      if(isTextEntry(e.target)) return;
+      if(modalOpen()){ modalKey(e); return; }
       if((e.ctrlKey||e.metaKey) && !e.shiftKey && (e.key==='z'||e.key==='Z')){ e.preventDefault(); undo(); return; }
       if((e.ctrlKey||e.metaKey) && ((e.shiftKey && (e.key==='z'||e.key==='Z')) || e.key==='y'||e.key==='Y')){ e.preventDefault(); redo(); return; }
       if(e.shiftKey && !e.altKey && e.key.startsWith('Arrow') && selectedBoxIndex!==-1){
         e.preventDefault(); const s=e.ctrlKey?10:1;
         nudge(e.key==='ArrowLeft'?-s:e.key==='ArrowRight'?s:0, e.key==='ArrowUp'?-s:e.key==='ArrowDown'?s:0); return;
       }
-      if(e.code==='Space' && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); if(!e.repeat) markReviewed(e.shiftKey); return; }
+      // Any other Ctrl/Alt/Cmd combination (Ctrl+A, Ctrl+F, Ctrl+R, ...) is the browser's.
+      if(e.ctrlKey || e.metaKey || e.altKey) return;
+      if(e.target.tagName==='SELECT' && /^Arrow|^(Home|End|PageUp|PageDown)$/.test(e.key)) return; // moving within a focused list
+      if(e.code==='Space'){ e.preventDefault(); if(!e.repeat) markReviewed(e.shiftKey); return; }
       if((e.key==='n'||e.key==='N') && !e.ctrlKey && !e.metaKey && !e.altKey){ e.preventDefault(); markNoLabel(); return; }
       if(e.key==='Delete'||e.key==='Backspace'){ if(selectedBoxIndex!==-1){ saveState(); boxes.splice(selectedBoxIndex,1); selectedBoxIndex=-1; updateBoxList(); scheduleDraw(); commitEdit(); } }
       else if(e.key==='ArrowLeft'||e.key==='a'||e.key==='A'){ e.preventDefault(); previousImage(); }

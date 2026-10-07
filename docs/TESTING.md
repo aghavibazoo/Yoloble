@@ -167,3 +167,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Errors are visible: open a folder on a USB stick and unplug it while it loads: the loading box closes and a message says what failed (nothing hangs). DevTools Console shows a logged reason for every failed read or write.
 - [ ] The sidebar has no Debug panel any more; everything else in it works as before.
 - [ ] `tests/irs_check_round.py` (run from the irs repository) uses the label rules of the irs config: change `edge_tolerance` there and the script follows.
+- [ ] Keyboard: click the **Class names** checkbox or a Smart Filters list, then press **D**: the next image shows. **Ctrl+A**, **Ctrl+F**, **Ctrl+R** do what the browser does (they no longer change image, fit or zoom). In **Finish round**, **Tab** cycles only through the dialog (image names are reachable, **Enter** opens one); **Esc** closes it and focus returns where it was. A screen reader announces the dialog by its title.
