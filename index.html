@@ -1633,7 +1633,10 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     // Status lists for this dataset only, with the image names exactly as on disk
     // (the same content as the folder's image_status.json).
     function exportStatusFilesToZip(zip){
-      const statusText = folder ? statusFileText() : YoloCore.serializeStatusJson(allImageNames(), statusOfName);
+      // The ZIP's labels come from memory, so its statuses do too (nothing is held back here).
+      const statusText = folder
+        ? YoloCore.serializeStatusJson([...folder.imageNames, ...folder.extraStatus.keys()], n=>folder.extraStatus.get(n) ?? statusOfName(n))
+        : YoloCore.serializeStatusJson(allImageNames(), statusOfName);
       const rows=JSON.parse(statusText);
       zip.folder('lists').file('deleted_list.txt',rows.filter(r=>r.status==='deleted').map(r=>r.name).join('\n'));
       zip.folder('lists').file('labeled_list.txt',rows.filter(r=>r.status==='labeled').map(r=>r.name).join('\n'));

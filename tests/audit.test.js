@@ -636,4 +636,17 @@ test('NEW-2: a review held back for its label is written when that label edit is
   assert.match((await snap(b)).saveState, /All changes saved/);
 }));
 
+test('NEW-3: the ZIP export carries the statuses of the labels it contains (from memory)', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await lockLabel(b);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await b.key(' '); await loaded(b, 1);
+  await sleep(1200);
+  const r = await b.evaluate(`(async () => { const z = await JSZip.loadAsync(await YOLOUI._buildBundle());
+    const st = JSON.parse(await z.file('lists/image_status.json').async('string')).find(r => r.name === '${IMG0}.jpg').status;
+    return { st, lines: (await z.file('labels/${IMG0}.txt').async('string')).trim().split(String.fromCharCode(10)).length }; })()`);
+  assert.deepEqual(r, { st: 'reviewed', lines: 4 });
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
