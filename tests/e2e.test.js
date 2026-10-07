@@ -517,6 +517,38 @@ test('? shows the keyboard shortcuts; Esc closes them', { skip }, () => withBrow
   assert.equal(await b.evaluate(`document.getElementById('modalBg').classList.contains('show')`), false);
 }));
 
+test('ZIP export (fallback): labels for kept images, classes.txt, lists with exact names of this dataset only, project.json', { skip }, () => withBrowser(async b => {
+  // An older Yoloble left statuses of another dataset in localStorage.
+  await b.evaluate(`localStorage.setItem('yolo_image_status', JSON.stringify([{name:'Other_Dataset_IMG_0001.JPG', status:'labeled'}]))`);
+  await b.goto(b.url || (await b.evaluate('location.href'))); await b.waitFor('typeof YOLOUI === "object"');
+  await b.evaluate('YOLOUI._storageReady()');
+  const files = ORIGINAL();
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  await b.key(' ');
+  await b.waitFor('YOLOUI._snapshot().index === 1 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await b.evaluate('YOLOUI.deleteCurrentImage()');
+  await b.waitFor('YOLOUI._snapshot().count === 11');
+  const out = await b.evaluate(`(async () => {
+    const zip = await JSZip.loadAsync(await YOLOUI._buildBundle());
+    const names = Object.keys(zip.files).filter(n => !zip.files[n].dir).sort();
+    const read = n => zip.file(n).async('string');
+    return { names, status: await read('lists/image_status.json'), classes: await read('classes.txt'), deleted: await read('lists/deleted_list.txt'),
+             project: JSON.parse(await read('project.json')), first: await read('labels/clark_ave_01__a1b2c3d4__f006138.txt') };
+  })()`);
+  const images = Object.keys(files).filter(k => k.startsWith('Images/')).map(k => k.slice(7)).sort();
+  assert.deepEqual(out.names.filter(n => n.startsWith('labels/')).length, 11, 'deleted image left out');
+  assert.ok(!out.names.includes('labels/clark_ave_01__a1b2c3d4__f010808.txt'));
+  for (const n of ['classes.txt', 'lists/image_status.json', 'lists/deleted_list.txt', 'lists/labeled_list.txt', 'project.json']) assert.ok(out.names.includes(n), n);
+  const st = JSON.parse(out.status);
+  assert.deepEqual(st.map(r => r.name), images, 'exactly this dataset, exact names');
+  assert.equal(st.find(r => r.name === 'clark_ave_01__a1b2c3d4__f006138.jpg').status, 'reviewed');
+  assert.equal(out.deleted, 'clark_ave_01__a1b2c3d4__f010808.jpg');
+  assert.equal(out.classes, files['classes.txt'].toString(), 'classes.txt as in the folder');
+  assert.deepEqual(out.project.round, { roundId: 3, modelId: 'm0005' });
+  assert.equal(out.first, files['Labels/clark_ave_01__a1b2c3d4__f006138.txt'].toString());
+}));
+
 test('a folder opened read-only is never written and says so', { skip }, () => withBrowser(async b => {
   await putFolder(b, 'round', ORIGINAL());
   await b.evaluate(`(async () => { const r = await navigator.storage.getDirectory(); await YOLOUI._loadReadOnlyForTests(await r.getDirectoryHandle('round')); })()`);

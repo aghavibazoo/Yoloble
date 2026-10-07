@@ -119,3 +119,7 @@ Tick each line. Each line was added with the change it covers.
 ### Shortcut overlay
 
 - [ ] **?** (or the **?** button) lists every key, grouped (Review, Boxes, Classes, View); while it is open keys do not act on the image; **Esc** or **Close** closes it.
+
+### ZIP export (fallback)
+
+- [ ] After reviewing a few images and deleting one, **Download Bundle**: the ZIP has `labels/` (no file for the deleted image), `classes.txt` identical to the folder's, `lists/image_status.json` with exactly the images of this folder and their names unchanged (also when an older Yoloble left other statuses in the browser), `lists/deleted_list.txt`, `lists/labeled_list.txt` and `project.json` (with the round ID). `irs ingest --round N --export <zip>` accepts it.

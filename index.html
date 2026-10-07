@@ -1245,8 +1245,18 @@
 
     async function downloadBundle(){
       if(!imageMetadata.length){ alert('No images loaded'); return }
-      saveCurrentLabels();
       showLoading('Preparing Bundle...','Collecting files...');
+      try{
+        const blob=await buildBundle();
+        if(!blob) return;
+        const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='yolo_editor_bundle.zip'; a.click();
+      }catch(e){ console.error(e); alert('ZIP failed: '+(e?.message||e)); }
+      finally{ hideLoading(); }
+    }
+    // The fallback export (docs/round_format.md, "Yoloble ZIP export").
+    async function buildBundle(){
+      if(typeof JSZip!=='function') throw new Error('the ZIP library did not load (it comes from cdnjs.cloudflare.com; check the network)');
+      saveCurrentLabels();
       const zip=new JSZip(), labelsFolder=zip.folder('labels');
       const imgs=imageMetadata.map((m,idx)=>({m,idx})).filter(({m})=> statusMap.get(norm(m.name))!=='deleted');
       for(let i=0;i<imgs.length;i++){
@@ -1256,22 +1266,26 @@
         const arr=labels[idx]||[];
         labelsFolder.file(`${base}.txt`, YoloCore.serializeLabels(arr));
       }
-      zip.file('classes.txt', CLASS_NAMES.join('\n'));
+      // classes.txt exactly as the folder has it when unchanged, else from the class list.
+      const classesText = folder?.classesText!=null && JSON.stringify(YoloCore.splitLines(folder.classesText).map(l=>l.trim()))===JSON.stringify(CLASS_NAMES) ? folder.classesText : CLASS_NAMES.join('\n')+'\n';
+      zip.file('classes.txt', classesText);
       zip.file('dataset_statistics.txt', buildStatsText());
-      exportStatusFilesToZip(zip);
-      const manifest={created:new Date().toISOString(),imageCount:imageMetadata.length,currentIndex:currentImageIndex,classes:CLASS_NAMES,status:[...statusMap.entries()]};
+      const statusText=exportStatusFilesToZip(zip);
+      const manifest={created:new Date().toISOString(),imageCount:imageMetadata.length,currentIndex:currentImageIndex,classes:CLASS_NAMES,
+                      status:JSON.parse(statusText).map(r=>[r.name,r.status]), round:round?{roundId:round.roundId, modelId:round.modelId}:null};
       zip.file('project.json', JSON.stringify(manifest,null,2));
       updateLoading(95,'Compressing...');
-      try{ const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}}); const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='yolo_editor_bundle.zip'; a.click(); }catch{ alert('ZIP failed') }
-      hideLoading();
+      return zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
     }
+    // Status lists for this dataset only, with the image names exactly as on disk
+    // (the same content as the folder's image_status.json).
     function exportStatusFilesToZip(zip){
-      const deleted=[...statusMap.entries()].filter(([_,s])=>s==='deleted').map(([n])=>n);
-      const labeled=[...statusMap.entries()].filter(([_,s])=>s==='labeled').map(([n])=>n);
-      const statusJson=JSON.stringify([...statusMap.entries()].map(([name,status])=>({name,status})),null,2);
-      zip.folder('lists').file('deleted_list.txt',deleted.join('\n'));
-      zip.folder('lists').file('labeled_list.txt',labeled.join('\n'));
-      zip.folder('lists').file('image_status.json',statusJson);
+      const statusText = folder ? statusFileText() : YoloCore.serializeStatusJson(allImageNames(), statusOfName);
+      const rows=JSON.parse(statusText);
+      zip.folder('lists').file('deleted_list.txt',rows.filter(r=>r.status==='deleted').map(r=>r.name).join('\n'));
+      zip.folder('lists').file('labeled_list.txt',rows.filter(r=>r.status==='labeled').map(r=>r.name).join('\n'));
+      zip.folder('lists').file('image_status.json',statusText);
+      return statusText;
     }
 
     function buildLabelDatabase(){
@@ -2367,7 +2381,7 @@ Generated: ${new Date().toISOString()}`;
       markReviewed, nextUnreviewed, finishRound, showShortcuts, jumpToUncertain: ()=>jumpToUncertain(), toggleStrip: ()=>toggleStrip(),
       cancelLoading,
       // For the automated tests (tests/e2e.test.js); not used by the page.
-      _openFolder: openFolder, _round: ()=>round && {roundId:round.roundId, modelId:round.modelId, classes:round.classes, images:round.images.size}, _flushSaves: ()=>flushSaves(), _saveSession: ()=>saveSessionNow(), _storageReady: ()=>storageReady,
+      _openFolder: openFolder, _buildBundle: ()=>buildBundle(), _round: ()=>round && {roundId:round.roundId, modelId:round.modelId, classes:round.classes, images:round.images.size}, _flushSaves: ()=>flushSaves(), _saveSession: ()=>saveSessionNow(), _storageReady: ()=>storageReady,
       _loadReadOnlyForTests: h=>loadDatasetFromDirectory(h,false), _issues: ()=>currentIssues().map(({code,box,severity,fix})=>({code,box,severity,fix})), _gotoIndex: i=>gotoName(imageMetadata[i]?.name),
       _toClient: pts=>{ updateRenderState(); const r=canvas.getBoundingClientRect(); return pts.map(p=>{ const s=imageToScreen(p.x*RS.imgW,p.y*RS.imgH); return {x:r.left+s.x, y:r.top+s.y}; }); },
       _snapshot: ()=>({ index:currentImageIndex, name:imageMetadata[currentImageIndex]?.name??null, count:imageMetadata.length,
