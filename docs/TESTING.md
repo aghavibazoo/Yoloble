@@ -144,3 +144,7 @@ Tick each line. Each line was added with the change it covers.
 ### round.json additions within format 1
 
 - [ ] In a copy of the sample, set `"kind": "test"` in `round.json` and give one image `"reason": "legacy_conflict"` with a `legacy_variants` list: the header shows **TEST round 3** (hover: box every vehicle), the banner shows **LEGACY CONFLICT** with its `reason_text`, and hovering lists the legacy copies. Hovering the banner on a normal frame shows its source (site, video, frame, local time). Unknown keys in `round.json` are ignored.
+
+### Audit fixes
+
+- [ ] Save race (B1): on a slow disk (a network share, or DevTools > Network throttling has no effect here, so use a USB stick), draw a box and press **Ctrl+Z** right away: after **All changes saved**, the label file matches the screen (the box is gone).

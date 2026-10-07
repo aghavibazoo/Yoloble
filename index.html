@@ -906,12 +906,12 @@
     let round=null;  // parsed round.json of the open folder (YoloCore.parseRoundJson), or null
     const SAVE_DEBOUNCE_MS=400, SAVE_RETRY_MS=5000;
     // diskText / diskStatus: what the folder holds, as last read or written.
-    const save={pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskStatus:new Map(), forceRewrite:new Set(), timer:null, retry:null, error:null, lastSaved:null, again:false};
+    const save={pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskStatus:new Map(), forceRewrite:new Set(), inFlight:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
     let flushPromise=null;
 
     function resetSaveState(){
       clearTimeout(save.timer); clearTimeout(save.retry);
-      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.error=null; save.lastSaved=null;
+      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.inFlight.clear(); save.error=null; save.lastSaved=null;
       hideSaveBanner(); updateSaveIndicator();
     }
     const unsavedCount=()=>save.pendingLabels.size+(save.pendingStatus?1:0);
@@ -955,7 +955,10 @@
     function noteLabelsChanged(name,arr){
       if(session){ session.edited.add(name); scheduleSessionSave(); }
       if(!folder) return;
-      const text=YoloCore.serializeLabels(arr), disk=save.diskText.has(name)?save.diskText.get(name):null;
+      // Compare with what the folder will hold once a write in progress lands,
+      // so that undoing an edit while it is being written is written too.
+      const text=YoloCore.serializeLabels(arr);
+      const disk=save.inFlight.has(name) ? save.inFlight.get(name) : save.diskText.has(name) ? save.diskText.get(name) : null;
       // A file with unreadable lines is only rewritten (dropping them) after a
       // real edit or an explicit Rewrite, not just because the image was shown.
       const diskBoxes = disk===null ? null : YoloCore.serializeLabels(YoloCore.parseLabelText(disk).boxes);
@@ -989,11 +992,14 @@
       const target=folder;
       try{
         for(const [name,text] of [...save.pendingLabels]){
-          await writeLabelFile(name,text);
+          save.pendingLabels.delete(name); save.inFlight.set(name,text);
+          try{ await writeLabelFile(name,text); }
+          catch(e){ save.inFlight.delete(name); if(!save.pendingLabels.has(name)) save.pendingLabels.set(name,text); throw e; }
+          save.inFlight.delete(name);
           if(folder!==target) return;
           save.diskText.set(name,text); save.forceRewrite.delete(name);
-          if(save.pendingLabels.get(name)===text) save.pendingLabels.delete(name);
         }
+        if(save.pendingLabels.size) save.again=true; // changed while writing: write again
         if(save.pendingStatus){
           save.pendingStatus=false;
           try{ await writeStatusFile(); }catch(e){ save.pendingStatus=true; throw e; }

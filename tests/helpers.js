@@ -84,4 +84,10 @@ async function clickAt(b, p) {
 }
 const boxCenter = bx => ({ x: bx.xc, y: bx.yc });
 
-module.exports = { ROOT, SAMPLE, serve, walk, sampleFiles, putFolder, getFolder, openRound, snap, lineCount, settle, drag, clickAt, boxCenter };
+// Slow disk: every write's close() takes `ms` (like a network share), so saves
+// stay in flight long enough to race with edits.
+const slowDisk = (b, ms) => b.evaluate(`(() => { const P = FileSystemWritableFileStream.prototype;
+  if (!P.__realClose) P.__realClose = P.close;
+  P.close = async function () { await new Promise(r => setTimeout(r, ${ms})); return P.__realClose.call(this); }; })()`);
+
+module.exports = { slowDisk, ROOT, SAMPLE, serve, walk, sampleFiles, putFolder, getFolder, openRound, snap, lineCount, settle, drag, clickAt, boxCenter };
