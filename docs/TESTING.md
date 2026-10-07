@@ -8,7 +8,12 @@ Requires Node.js 22 or later. Nothing to install.
 node --test
 ```
 
-- `tests/core.test.js` unit-tests the pure logic in the `<script id="yoloble-core">` block of `index.html` (label parsing and writing, validation, status rules, `round.json` parsing). The test loads that block straight from `index.html`, so it tests the shipped code.
+- `tests/core.test.js` unit-tests the pure logic in the `<script id="yoloble-core">` block of `index.html` (label parsing and writing, validation, status rules, recovery planning, class search, `round.json` parsing). The test loads that block straight from `index.html`, so it tests the shipped code.
+- `tests/e2e.test.js` drives `index.html` in headless Chrome or Edge over the DevTools protocol (`tests/cdp.js`, no Playwright needed). The round folder is a copy of `samples/round_sample` in the browser's origin-private file system, which gives Yoloble a real read-write folder handle, so saving goes through the same code as **Choose Folder**. Crashes are simulated by killing the browser and restarting it on the same profile. Skipped if no Chromium browser is found (set `CHROME_PATH`).
+- `tests/acceptance.test.js` is the design section 12 acceptance run on a generated 50-frame round (needs Python with Pillow).
+- `tests/irs_check_round.py` checks a finished round with irs's own label checker (run it from the irs environment).
+
+What the automated tests cannot cover: the browser's folder picker and permission prompts (the tests hand Yoloble a folder handle directly), a real disk on Windows (OPFS is used instead), real crashes of a visible browser, and how the screen looks. The manual checklist covers those.
 
 ## Manual checklist
 
@@ -49,7 +54,7 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Change a label file in Notepad while Yoloble is closed, after Yoloble had an unsaved edit for it: on reopening, the folder's version is kept and a banner says one image was changed outside Yoloble.
 - [ ] Older state: in DevTools > Application > Local Storage, add key `yolo_image_status` with `[{"name":"<an image>.jpg","status":"deleted"}]` and reload. The key is gone, IndexedDB `yoloble` > `meta` has `legacyStatus`, and opening a folder without `image_status.json` hides that image as before.
 - [ ] Drag images and their label files in together, edit, reload the page and drag the same files in: Yoloble offers the edits back.
-- [ ] In DevTools > Application > IndexedDB, delete database `yoloble` while Yoloble is open, then edit: a yellow banner says the browser backup failed, and saving to the folder carries on.
+- [ ] Full browser storage: DevTools > Application > Storage > tick **Simulate custom storage quota** and set it very low (e.g. 0.01 MB), then edit: a yellow banner says the browser backup failed, and saving to the folder carries on. Untick it: the next edit clears the banner.
 
 ### Classes
 
