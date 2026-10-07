@@ -1,0 +1,2 @@
+# Sample rounds are test data: keep their bytes exactly as generated.
+samples/** -text
