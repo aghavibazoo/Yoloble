@@ -2368,7 +2368,7 @@ Generated: ${new Date().toISOString()}`;
       showLoading('Loading Dataset...','Scanning structure...');
       await storageReady;
       releaseFolderLock();
-      folder=null; session=null; round=null; resetSaveState(); statusMap=new Map(legacyStatus);
+      folder=null; session=null; round=null; resetSaveState(); statusMap=new Map();
       imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); removedImages.clear(); boxesOwner=null; boxes=[];
       const loadWarnings=[];
       let statusEntries=new Map(), statusProblem=null, statusRaw=null;
@@ -2416,6 +2416,10 @@ Generated: ${new Date().toISOString()}`;
       }
       // image_status.json: an entry with the exact name wins over one that only
       // matches ignoring case (older versions wrote lower-cased names).
+      // Statuses older versions kept in the browser (not per folder) apply only
+      // to a folder that has no image_status.json yet, as they did then; a
+      // folder with its own status file never takes statuses from elsewhere.
+      if(!statusJsonHandle) for(const n of allImageNames){ const st=legacyStatus.get(norm(n)); if(st && !statusMap.has(norm(n))) statusMap.set(norm(n),st); }
       const byLower=new Map();
       statusEntries.forEach((st,n)=>{ if(!byLower.has(norm(n))) byLower.set(norm(n),[]); byLower.get(norm(n)).push([n,st]); });
       for(const n of allImageNames){

@@ -233,4 +233,19 @@ test('Finish round flags a reviewed image without a label file and a label file 
   assert.match(body, /Labels\/orphan__frame__f000001\.txt belongs to no image in Images\//);
 }));
 
+test('statuses an older Yoloble kept in the browser never leak into a folder with its own image_status.json', { skip }, () => withBrowser(async b => {
+  await b.evaluate(`localStorage.setItem('yolo_image_status', JSON.stringify([{name:'${IMG0}.jpg', status:'deleted'}]))`);
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"'); await b.evaluate('YOLOUI._storageReady()');
+  const files = ORIGINAL();
+  files['image_status.json'] = Buffer.from(JSON.stringify(JSON.parse(files['image_status.json']).filter(r => r.name !== `${IMG0}.jpg`)));
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  assert.equal((await snap(b)).count, 12, 'not hidden by a status from another dataset');
+  await b.key(' ');
+  await loaded(b, 1);
+  await settle(b);
+  const st = JSON.parse((await getFolder(b, 'round'))['image_status.json']);
+  assert.ok(!st.some(r => r.status === 'deleted'), 'never written into this folder');
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
