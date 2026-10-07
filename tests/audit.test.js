@@ -410,4 +410,21 @@ test('R2: two different folders with the same name can be worked on in two tabs'
   assert.match((await snap(b)).saveState, /All changes saved/);
 }));
 
+test('R3: an outside change to image_status.json is merged even when its timestamp does not change (FAT, 2 s)', { skip }, () => withBrowser(async b => {
+  await putFolder(b, 'round', ORIGINAL());
+  // Every file reports the same modification time, as on a coarse file system.
+  await b.evaluate(`Object.defineProperty(File.prototype, 'lastModified', { get() { return 1700000000000; }, configurable: true }); 1`);
+  await openRound(b);
+  const other = 'clark_ave_01__a1b2c3d4__f016352.jpg';
+  const st = JSON.parse((await getFolder(b, 'round'))['image_status.json']);
+  st.find(r => r.name === other).status = 'deleted';
+  await writeOpfs(b, 'round', 'image_status.json', JSON.stringify(st, null, 2) + '\n');
+  await b.key(' ');
+  await loaded(b, 1);
+  await settle(b);
+  const now = Object.fromEntries(JSON.parse((await getFolder(b, 'round'))['image_status.json']).map(r => [r.name, r.status]));
+  assert.equal(now[`${IMG0}.jpg`], 'reviewed');
+  assert.equal(now[other], 'deleted', 'the outside change survives');
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

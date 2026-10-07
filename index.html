@@ -1050,12 +1050,13 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     const SAVE_DEBOUNCE_MS=400, SAVE_RETRY_MS=5000;
     // diskText / diskStatus: what the folder holds, as last read or written.
     // diskRaw: label file text exactly as read (folders only), badEncoding: files that are not UTF-8.
-    const save={statusStamp:null, pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskRaw:new Map(), badEncoding:new Set(), diskStatus:new Map(), forceRewrite:new Set(), inFlight:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
+    // statusText: image_status.json as Yoloble last read or wrote it (null: none).
+    const save={statusText:null, pendingLabels:new Map(), pendingStatus:false, diskText:new Map(), diskRaw:new Map(), badEncoding:new Set(), diskStatus:new Map(), forceRewrite:new Set(), inFlight:new Map(), timer:null, retry:null, error:null, lastSaved:null, again:false};
     let flushPromise=null;
 
     function resetSaveState(){
       clearTimeout(save.timer); clearTimeout(save.retry);
-      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.inFlight.clear(); save.diskRaw.clear(); save.badEncoding.clear(); save.statusStamp=null; save.error=null; save.lastSaved=null;
+      save.pendingLabels.clear(); save.pendingStatus=false; save.diskText.clear(); save.diskStatus.clear(); save.forceRewrite.clear(); save.inFlight.clear(); save.diskRaw.clear(); save.badEncoding.clear(); save.statusText=null; save.error=null; save.lastSaved=null;
       hideSaveBanner(); updateSaveIndicator();
     }
     const unsavedCount=()=>save.pendingLabels.size+(save.pendingStatus?1:0);
@@ -1096,14 +1097,18 @@ https://github.com/nodeca/pako/blob/main/LICENSE
     function statusFileText(){ return YoloCore.serializeStatusJson([...folder.imageNames, ...folder.extraStatus.keys()], statusForFile); }
     async function statusFileHandle(){ try{ return await folder.root.getFileHandle('image_status.json'); }catch(e){ if(e?.name==='NotFoundError') return null; throw e; } }
     async function writeStatusFile(){
-      // Someone else (another program, a window without the lock) changed the
-      // file since Yoloble read or wrote it: take their changes in first.
+      // Someone else (another program, another computer) changed the file since
+      // Yoloble last read or wrote it: take their changes in first. The bytes
+      // are compared, read right before writing: timestamps are too coarse on
+      // FAT/exFAT drives (2 s) to tell. A change landing after this read is
+      // caught by the read-back in writeTextFile, and merged on the retry.
       const fh=await statusFileHandle();
-      if(fh){ const f=await fh.getFile(); if(f.lastModified!==save.statusStamp) mergeStatusFromDisk(await f.text()); }
-      const written=new Map(folder.imageNames.map(n=>[n,statusForFile(n)]));
-      await writeTextFile(folder.root,'image_status.json',statusFileText());
+      if(fh){ const now=await (await fh.getFile()).text(); if(now!==save.statusText) mergeStatusFromDisk(now); }
+      else if(save.statusText!==null) console.warn('image_status.json disappeared; writing it again');
+      const written=new Map(folder.imageNames.map(n=>[n,statusForFile(n)])), text=statusFileText();
+      await writeTextFile(folder.root,'image_status.json',text);
       written.forEach((st,n)=>save.diskStatus.set(n,st));
-      save.statusStamp=(await (await statusFileHandle())?.getFile())?.lastModified ?? null;
+      save.statusText=text; // what Yoloble wrote, never what it finds there later
     }
     // A status changed on disk is kept unless this window changed the same
     // image's status itself (then this window's decision wins).
@@ -2448,10 +2453,11 @@ Generated: ${new Date().toISOString()}`;
       try{
         if(statusJsonHandle){
           let bytes=null;
-          try{ const sf=await statusJsonHandle.getFile(); save.statusStamp=sf.lastModified; bytes=new Uint8Array(await sf.arrayBuffer()); }
+          try{ const sf=await statusJsonHandle.getFile(); bytes=new Uint8Array(await sf.arrayBuffer()); }
           catch(e){ statusProblem=`image_status.json could not be read (${e.message||e})`; }
           if(bytes){
             const d=YoloCore.decodeUtf8(bytes), r=YoloCore.parseStatusJson(d.text);
+            save.statusText=d.text;
             if(!d.ok) statusProblem='image_status.json is not valid UTF-8';
             else if(r.error) statusProblem=r.error;
             if(statusProblem) statusRaw=bytes;
