@@ -181,3 +181,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] One stuck file (R7): open one label file in a program that locks it (or make it read-only), edit that image and two others, review one: the others and `image_status.json` are saved; the banner names the stuck file; it is retried with growing pauses and saved once released.
 - [ ] Case mismatch (R6): rename a label file to upper case (`Labels\CLARK_...F006138.txt`) and open the folder: a warning on opening, the boxes still show, Checks says to rename it; editing that image is never saved (the banner says why) and the file is not touched. Rename it back and reopen: all normal.
 - [ ] An unreadable `classes.txt` (e.g. locked) gives a warning on opening; a round then uses the class names of `round.json`.
+- [ ] `THIRD-PARTY-NOTICES.md` holds the full MIT notices of JSZip and pako; the comment above the JSZip block in `index.html` states how to check the copy (sha256 with LF line endings).

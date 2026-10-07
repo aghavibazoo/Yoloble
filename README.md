@@ -82,7 +82,7 @@ project.json           classes, statuses, round ID
 ## Browser support and limits
 
 - Chromium-based browsers (Chrome, Edge, Brave): folder access needs the File System Access API.
-- Everything works offline, the ZIP export included (JSZip 3.10.1 is inside `index.html`).
+- Everything works offline, the ZIP export included (JSZip 3.10.1 is inside `index.html`; its and pako's licence notices are in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)).
 - The browser backup is per browser profile: resuming on another computer starts from what is in the folder.
 - Only one tab or window of a browser writes to a folder; a second one opens it read-only. Two different browsers or computers on the same folder are not detected (only changes to `image_status.json` made meanwhile are merged).
 - Model boxes are shown as unchecked while their pre-label file is unchanged since this browser first saw it. On the very first open in a browser, a file already edited elsewhere is trusted if it still has as many lines as `prelabel_conf` has entries.

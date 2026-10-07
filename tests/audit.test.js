@@ -512,4 +512,16 @@ test('an unreadable classes.txt is reported when the folder opens', { skip }, ()
   assert.match(b.dialogs.join('\n'), /classes\.txt could not be read \(read error \(simulated\)\)/);
 }));
 
+test('the vendored JSZip is the published file (sha256 with LF line endings) and its notices are present', () => {
+  const crypto = require('node:crypto');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+  const start = html.indexOf('<script id="jszip">') + '<script id="jszip">'.length;
+  const body = html.slice(start, html.indexOf('</script>', start)).replace(/^\r?\n/, '').replace(/\r?\n$/, '').replace(/\r\n/g, '\n');
+  const hash = crypto.createHash('sha256').update(body, 'utf8').digest('hex');
+  assert.equal(hash, 'acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e');
+  const notices = fs.readFileSync(path.join(__dirname, '..', 'THIRD-PARTY-NOTICES.md'), 'utf8');
+  assert.match(notices, /JSZip 3\.10\.1[\s\S]*Copyright \(c\) 2009-2016 Stuart Knightley[\s\S]*Permission is hereby granted/);
+  assert.match(notices, /pako[\s\S]*Copyright \(C\) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn[\s\S]*Permission is hereby granted/);
+});
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };
