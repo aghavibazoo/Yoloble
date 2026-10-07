@@ -116,4 +116,31 @@ test('M4: an unedited label file is checked on its exact bytes (what irs reads),
   assert.deepEqual(await checks(), []);
 }));
 
+test('M5: an image_status.json Yoloble cannot read is never overwritten without consent; replacing keeps a backup', { skip }, () => withBrowser(async b => {
+  const files = ORIGINAL();
+  const broken = Buffer.from(files['image_status.json'].toString().replace('"unlabeled"', '"reviewed"').slice(0, -20));  // truncated: not valid JSON
+  files['image_status.json'] = broken;
+  await putFolder(b, 'round', files);
+  await openRound(b);
+  const s = await snap(b);
+  assert.match(s.saveState, /Read-only/);
+  assert.match(await b.evaluate(`document.getElementById('saveBannerMsg').textContent`), /image_status\.json is not valid JSON.*opened read-only/);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await b.key(' ', { shift: true });
+  await loaded(b, 1);
+  await sleep(800);
+  let disk = await getFolder(b, 'round');
+  assert.ok(disk['image_status.json'].equals(broken), 'status file untouched');
+  assert.ok(disk[`Labels/${IMG0}.txt`].equals(files[`Labels/${IMG0}.txt`]), 'label file untouched');
+  // The reviewer chooses to replace it: the old bytes are kept beside it.
+  await b.evaluate(`document.getElementById('saveBannerReplace').click()`);
+  await settle(b);
+  disk = await getFolder(b, 'round');
+  assert.ok(disk['image_status.json.bak'].equals(broken));
+  const st = JSON.parse(disk['image_status.json']);
+  assert.equal(st.length, 12);
+  assert.equal(st.find(r => r.name === `${IMG0}.jpg`).status, 'reviewed');
+  assert.equal(lineCount(disk[`Labels/${IMG0}.txt`]), 4, 'the edit made meanwhile is saved too');
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

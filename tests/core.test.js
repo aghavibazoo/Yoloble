@@ -55,9 +55,9 @@ test('isSafeFileName refuses paths and reserved names', () => {
   for (const bad of ['', '.', '..', '../x.txt', 'a/b.txt', 'a\b.txt', 'c:x.txt', 'a\u0000.txt', 'x'.repeat(256)]) assert.equal(C.isSafeFileName(bad), false, JSON.stringify(bad));
 });
 
-test('parseStatusJson keeps exact names and skips malformed rows', () => {
+test('parseStatusJson keeps exact names and reports malformed rows', () => {
   const r = C.parseStatusJson('[{"name":"A.jpg","status":"reviewed"},{"name":"b.jpg"},null,{"name":"c.jpg","status":"deleted"}]');
-  assert.equal(r.error, null);
+  assert.equal(r.error, 'image_status.json has 2 entries without a name and a status', 'reported, since rewriting would lose them');
   assert.deepEqual([...r.entries], [['A.jpg', 'reviewed'], ['c.jpg', 'deleted']]);
   assert.match(C.parseStatusJson('{').error, /not valid JSON/);
   assert.match(C.parseStatusJson('{}').error, /not a JSON array/);

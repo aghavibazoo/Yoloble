@@ -26,7 +26,8 @@ RULES = LabelRulesConfig(edge_tolerance=1e-6, duplicate_box_iou=0.95)  # configs
 
 def check(folder: Path) -> list[str]:
     problems: list[str] = []
-    expected_top = {"Images", "Labels", "classes.txt", "image_status.json", "round.json"}
+    # image_status.json.bak: Yoloble's copy of a status file it could not read (proposed for round_format.md)
+    expected_top = {"Images", "Labels", "classes.txt", "image_status.json", "round.json", "image_status.json.bak"}
     top = {p.name for p in folder.iterdir()}
     if top - expected_top:
         problems.append(f"unexpected entries in the round folder: {sorted(top - expected_top)}")

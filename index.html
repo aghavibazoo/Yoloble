@@ -205,6 +205,7 @@
   <div id="saveBanner" class="banner error" role="alert">
     <span class="msg" id="saveBannerMsg"></span>
     <button id="saveBannerGrant" onclick="YOLOUI.grantWriteAccess()">Allow saving to folder</button>
+    <button id="saveBannerReplace" onclick="YOLOUI.replaceBrokenStatusFile()" style="display:none">Replace image_status.json (keep a backup)</button>
     <button id="saveBannerRetry" onclick="YOLOUI.retrySave()">Retry now</button>
     <button onclick="YOLOUI.downloadBundle()">Download Bundle (ZIP)</button>
   </div>
@@ -484,9 +485,9 @@
       let arr;
       try{ arr=JSON.parse(String(text ?? '').replace(/^﻿/,'')); }catch(e){ return {entries:new Map(), error:`image_status.json is not valid JSON (${e.message})`}; }
       if(!Array.isArray(arr)) return {entries:new Map(), error:'image_status.json is not a JSON array'};
-      const entries=new Map();
-      for(const r of arr) if(r && typeof r.name==='string' && r.name && typeof r.status==='string' && r.status) entries.set(r.name, r.status);
-      return {entries, error:null};
+      const entries=new Map(); let skipped=0;
+      for(const r of arr){ if(r && typeof r.name==='string' && r.name && typeof r.status==='string' && r.status) entries.set(r.name, r.status); else skipped++; }
+      return {entries, skipped, error: skipped ? `image_status.json has ${skipped} entr${skipped>1?'ies':'y'} without a name and a status` : null};
     }
     const byCodePoint=(a,b)=>a<b?-1:a>b?1:0;
     // One entry per name, sorted, two-space indented, trailing newline.
@@ -998,16 +999,20 @@
     const unsavedCount=()=>save.pendingLabels.size+(save.pendingStatus?1:0);
     const hasUnsavedWork=()=>!!folder && (unsavedCount()>0 || !!flushPromise);
 
-    async function writeTextFile(dir,fileName,text){
+    async function writeTextFile(dir,fileName,data){
       if(!YoloCore.isSafeFileName(fileName)) throw new Error(`refusing to write unsafe file name "${fileName}"`);
       const fh=await dir.getFileHandle(fileName,{create:true});
       // createWritable() writes to a temporary file and swaps it into place on close().
       const w=await fh.createWritable({keepExistingData:false});
-      try{ await w.write(text); await w.close(); }
+      try{ await w.write(data); await w.close(); }
       catch(e){ try{ await w.abort(); }catch{} throw e; }
-      const back=await (await fh.getFile()).text();
-      if(back!==text) throw new Error(`${fileName} did not read back as written`);
+      const back=new Uint8Array(await (await fh.getFile()).arrayBuffer());
+      const want=typeof data==='string' ? new TextEncoder().encode(data) : data;
+      if(back.length!==want.length || back.some((v,i)=>v!==want[i])) throw new Error(`${fileName} did not read back as written`);
     }
+    // The one other file Yoloble may write: a copy of an image_status.json it
+    // could not read, made before replacing it (docs/round_format.md).
+    const STATUS_BACKUP='image_status.json.bak';
     // A write interrupted by a crash leaves Chromium's temporary file
     // ("<name>.crswap") next to the real one. Remove those left by Yoloble's own
     // writes (image_status.json, Labels/*.txt) when a folder is opened.
@@ -1098,6 +1103,15 @@
       }
     }
     function retrySave(){ save.error=null; hideSaveBanner(); return flushSaves(); }
+    async function replaceBrokenStatusFile(){
+      if(!folder?.statusProblem || !folder.statusRaw) return;
+      if(!confirm(`Replace image_status.json with the statuses Yoloble shows? The current file is kept as ${STATUS_BACKUP}.`)) return;
+      if(!(await verifyPermission(folder.root,false))){ alert('Yoloble cannot write to this folder.'); return; }
+      try{ await writeTextFile(folder.root, STATUS_BACKUP, folder.statusRaw); }
+      catch(e){ alert(`Could not write ${STATUS_BACKUP} (${e.message||e}); image_status.json was not replaced.`); return; }
+      folder.statusProblem=null; folder.statusRaw=null; folder.writable=true; save.error=null;
+      hideSaveBanner(); noteStatusChanged(); await flushSaves();
+    }
     async function grantWriteAccess(){
       if(!folder) return;
       if(await verifyPermission(folder.root,false)){ folder.writable=true; save.error=null; hideSaveBanner(); scheduleSave(0); }
@@ -1105,9 +1119,12 @@
     }
 
     function showSaveBanner(){
-      const b=$("saveBanner"), perm=!folder.writable || isPermissionError(save.error);
+      const b=$("saveBanner"), broken=!!folder.statusProblem, perm=!broken && (!folder.writable || isPermissionError(save.error));
       b.className='banner show '+(folder.writable?'error':'warn');
-      $("saveBannerMsg").textContent = !folder.writable
+      $("saveBannerReplace").style.display = broken && folder.statusRaw ? '' : 'none';
+      $("saveBannerMsg").textContent = broken
+        ? `${folder.statusProblem}. To keep the reviews it may hold, "${folder.name}" was opened read-only: changes are NOT saved. Fix the file and reopen the folder, or replace it with the statuses shown here (the old file is kept as ${STATUS_BACKUP}).`
+        : !folder.writable
         ? `"${folder.name}" was opened read-only, so changes are NOT saved into it. Allow saving, or use Download Bundle before you close Yoloble.`
         : `Could not save to "${folder.name}": ${save.error?.message||save.error}. ${unsavedCount()} change(s) are not on disk yet. `+
           (perm ? 'Allow saving to continue.' : `Retrying every ${SAVE_RETRY_MS/1000} s. Do not close Yoloble until this message goes away, or use Download Bundle.`);
@@ -2274,7 +2291,7 @@ Generated: ${new Date().toISOString()}`;
       folder=null; session=null; round=null; resetSaveState(); statusMap=new Map(legacyStatus);
       imageMetadata=[]; labels=[]; currentImageIndex=0; currentFilteredIndices=[]; isFiltered=false; labelDatabase.isBuilt=false; imageCache.clear(); undoStacks.clear(); redoStacks.clear(); removedImages.clear(); boxesOwner=null; boxes=[];
       const loadWarnings=[];
-      let statusEntries=new Map();
+      let statusEntries=new Map(), statusProblem=null, statusRaw=null;
 
       let imagesHandle, labelsHandle=null, classFileHandle=null, statusJsonHandle=null, deletedTxtHandle=null, labeledTxtHandle=null;
 
@@ -2296,15 +2313,22 @@ Generated: ${new Date().toISOString()}`;
 
       try{
         if(statusJsonHandle){
-          const r=YoloCore.parseStatusJson(await (await statusJsonHandle.getFile()).text());
-          if(r.error) loadWarnings.push(`${r.error}. It will be rewritten from the statuses shown here when you change one.`);
-          statusEntries=r.entries; // applied per image below, once the image names are known
+          let bytes=null;
+          try{ bytes=new Uint8Array(await (await statusJsonHandle.getFile()).arrayBuffer()); }
+          catch(e){ statusProblem=`image_status.json could not be read (${e.message||e})`; }
+          if(bytes){
+            const d=YoloCore.decodeUtf8(bytes), r=YoloCore.parseStatusJson(d.text);
+            if(!d.ok) statusProblem='image_status.json is not valid UTF-8';
+            else if(r.error) statusProblem=r.error;
+            if(statusProblem) statusRaw=bytes;
+            statusEntries=r.entries; // applied per image below, once the image names are known
+          }
         } else {
           if(deletedTxtHandle){ const t=await (await deletedTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(norm(n),'deleted')); }
           if(labeledTxtHandle){ const t=await (await labeledTxtHandle.getFile()).text(); t.split(/\r?\n/).map(s=>s.trim()).filter(Boolean).forEach(n=>statusMap.set(norm(n),'labeled')); }
         }
         persistStatus();
-      }catch{}
+      }catch(e){ console.error('Reading the status lists failed',e); statusProblem=statusProblem||`the status files could not be read (${e.message||e})`; }
 
       const scanned=[], allImageNames=[];
       for await (const [name,handle] of imagesHandle.entries()){
@@ -2349,7 +2373,11 @@ Generated: ${new Date().toISOString()}`;
       // that are only a case variant of an image's name are dropped (no duplicates).
       const lowerNames=new Set(allImageNames.map(norm));
       const extraStatus=new Map([...statusEntries].filter(([n])=>!lowerNames.has(norm(n))));
-      folder={root:rootHandle, name:rootHandle.name, writable, labelsDir:labelsHandle, imageNames:allImageNames, labelFiles:new Map(), extraStatus, classesText};
+      folder={root:rootHandle, name:rootHandle.name, writable, labelsDir:labelsHandle, imageNames:allImageNames, labelFiles:new Map(), extraStatus, classesText,
+              statusProblem, statusRaw};
+      // Writing would replace the status file with what Yoloble could make of
+      // it and lose the reviews in it: stay read-only until the reviewer decides.
+      if(statusProblem) folder.writable=false;
 
       if(labelsHandle){
         const map=new Map();
@@ -2389,7 +2417,7 @@ Generated: ${new Date().toISOString()}`;
       await loadImageAtIndex(currentImageIndex);
       updateLoading(100,'Complete');
       updateSaveIndicator(); showResumeButton(); saveSessionNow();
-      if(!writable) showSaveBanner();
+      if(!folder.writable) showSaveBanner();
       if(unsavedCount()) scheduleSave(0);
       setTimeout(()=>{ hideLoading(); updateUI(); updateQuickNavigation(); updateFilterStats();
         if(loadWarnings.length) alert('Opened with warnings:\n\n'+loadWarnings.slice(0,12).join('\n')+(loadWarnings.length>12?`\n…and ${loadWarnings.length-12} more`:'')); },200);
@@ -2546,7 +2574,7 @@ Generated: ${new Date().toISOString()}`;
       exportStats: ()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([buildStatsText()],{type:'text/plain'})); a.download='dataset_statistics.txt'; a.click(); },
       downloadBundle,
       showDetailedDebug, deleteCurrentImage,
-      chooseFolder, grantWriteAccess, retrySave, resumeLastFolder, hideNotice,
+      chooseFolder, grantWriteAccess, retrySave, replaceBrokenStatusFile, resumeLastFolder, hideNotice,
       openClassPicker, toggleClassNames: ()=>toggleClassNames(), _renderClassList: renderClassList,
       markReviewed, nextUnreviewed, finishRound, showShortcuts, jumpToUncertain: ()=>jumpToUncertain(), toggleStrip: ()=>toggleStrip(),
       cancelLoading,

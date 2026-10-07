@@ -26,7 +26,7 @@ DatasetRoot/
 
 The contract with irs is [`docs/round_format.md`](docs/round_format.md) (format version 1).
 
-**What Yoloble writes:** only `Labels/<image>.txt` and `image_status.json`, only inside the folder you opened, each through a temporary file that is swapped in and read back. It never writes `Images/`, `round.json` or `classes.txt`. Opening a folder does not change it (apart from removing temporary `*.crswap` files left by a save the browser did not finish); a file is written when you change something. If writing fails, a red banner says so, the change is kept and saving is retried; a folder opened without write access gets an amber banner.
+**What Yoloble writes:** only `Labels/<image>.txt` and `image_status.json` (plus `image_status.json.bak`, a copy of a status file it could not read, made only when you choose to replace that file), only inside the folder you opened, each through a temporary file that is swapped in and read back. It never writes `Images/`, `round.json` or `classes.txt`. Opening a folder does not change it (apart from removing temporary `*.crswap` files left by a save the browser did not finish); a file is written when you change something. If writing fails, a red banner says so, the change is kept and saving is retried; a folder opened without write access gets an amber banner.
 
 **Statuses:** `unlabeled` and `labeled` both mean *not reviewed* (`labeled` only says the image has boxes, for example pre-labels). `reviewed` means a person confirmed the labels; an empty label file on a reviewed image is a confirmed empty frame. `deleted` rejects the image (the file is not removed). Status files from older versions keep working.
 
