@@ -1475,7 +1475,8 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       zip.file('dataset_statistics.txt', buildStatsText());
       const statusText=exportStatusFilesToZip(zip);
       const manifest={created:new Date().toISOString(),imageCount:imageMetadata.length,currentIndex:currentImageIndex,classes:CLASS_NAMES,
-                      status:JSON.parse(statusText).map(r=>[r.name,r.status]), round:round?{roundId:round.roundId, modelId:round.modelId}:null};
+                      status:JSON.parse(statusText).map(r=>[r.name,r.status]), round:round?{roundId:round.roundId, modelId:round.modelId}:null,
+                      round_id:round?.roundId ?? null}; // lets irs ingest refuse a ZIP of another round
       zip.file('project.json', JSON.stringify(manifest,null,2));
       updateLoading(95,'Compressing...');
       return zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});

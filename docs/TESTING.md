@@ -171,3 +171,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] `tests/irs_check_round.py` (run from the irs repository) uses the label rules of the irs config: change `edge_tolerance` there and the script follows.
 - [ ] Keyboard: click the **Class names** checkbox or a Smart Filters list, then press **D**: the next image shows. **Ctrl+A**, **Ctrl+F**, **Ctrl+R** do what the browser does (they no longer change image, fit or zoom). In **Finish round**, **Tab** cycles only through the dialog (image names are reachable, **Enter** opens one); **Esc** closes it and focus returns where it was. A screen reader announces the dialog by its title.
 - [ ] README "Browser support and limits" matches what the app does (one writing window per folder, the pre-label trust rule, offline ZIP).
+- [ ] The bundle's `project.json` has `"round_id": 3` for the sample round, so `irs ingest --round N --export` refuses a ZIP of another round.

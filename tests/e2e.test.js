@@ -561,6 +561,7 @@ test('ZIP export (fallback): labels for kept images, classes.txt, lists with exa
   assert.equal(out.deleted, 'clark_ave_01__a1b2c3d4__f010808.jpg');
   assert.equal(out.classes, files['classes.txt'].toString(), 'classes.txt as in the folder');
   assert.deepEqual(out.project.round, { roundId: 3, modelId: 'm0005' });
+  assert.equal(out.project.round_id, 3, 'round_format.md: project.json may carry round_id');
   assert.equal(out.first, files['Labels/clark_ave_01__a1b2c3d4__f006138.txt'].toString());
 }));
 
