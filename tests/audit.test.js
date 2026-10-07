@@ -248,4 +248,30 @@ test('statuses an older Yoloble kept in the browser never leak into a folder wit
   assert.ok(!st.some(r => r.status === 'deleted'), 'never written into this folder');
 }));
 
+test('a recovered undo of a delete shows the image again', { skip }, async () => {
+  const profile = profileDir('undel');
+  let b = await launch({ userDataDir: profile });
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+  await putFolder(b, 'round', ORIGINAL());
+  await openRound(b);
+  await b.evaluate('YOLOUI.deleteCurrentImage()');
+  await b.waitFor('YOLOUI._snapshot().count === 11 && YOLOUI._snapshot().owner === YOLOUI._snapshot().name');
+  await settle(b);                                   // the delete reached the folder
+  await b.evaluate(`FileSystemFileHandle.prototype.createWritable = function () { return Promise.reject(new DOMException('simulated', 'InvalidStateError')); };`);
+  await b.evaluate(`document.querySelector('#toast button').click()`);   // Undo, which cannot be saved
+  await b.waitFor('YOLOUI._snapshot().count === 12 && YOLOUI._snapshot().saveError !== null');
+  await b.evaluate('YOLOUI._saveSession()');
+  await b.kill();
+  b = await launch({ userDataDir: profile });
+  try {
+    await b.goto(base); await b.waitFor('typeof YOLOUI === "object"');
+    await openRound(b);
+    assert.match(b.dialogs.join('\n'), /kept 1 status change/);
+    assert.equal((await snap(b)).count, 12, 'the restored image is back in the set');
+    await settle(b);
+    const st = JSON.parse((await getFolder(b, 'round'))['image_status.json']);
+    assert.notEqual(st.find(r => r.name === `${IMG0}.jpg`).status, 'deleted');
+  } finally { await b.close(); }
+});
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

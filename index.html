@@ -2426,9 +2426,11 @@ Generated: ${new Date().toISOString()}`;
         const st = statusEntries.has(n) ? statusEntries.get(n) : byLower.get(norm(n))?.[0]?.[1];
         if(st!==undefined){ statusMap.set(norm(n), st); save.diskStatus.set(n, st); }
       }
+      // Every image is loaded; deleted ones are filtered out after recovery,
+      // which may restore one (an undone delete that never reached the folder).
       const deleted=getDeletedSet();
-      const entries=scanned.filter(e=>!deleted.has(norm(e.name)));
-      if(!entries.length){ hideLoading(); alert('No images found in "Images"'); return; }
+      const entries=scanned;
+      if(!entries.some(e=>!deleted.has(norm(e.name)))){ hideLoading(); alert(entries.length?'Every image in "Images" is marked deleted.':'No images found in "Images"'); return; }
       entries.sort((a,b)=>a.name.localeCompare(b.name));
 
       let idx=0;

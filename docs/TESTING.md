@@ -159,3 +159,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] Pre-label trust: open the round once, close Yoloble, change one number in a pre-label file of an image you did not open (same number of lines), reopen: that image shows solid boxes, the others still dashed.
 - [ ] Delete a reviewed image's label file and add `Labels/stray.txt`, reopen: **Finish round** lists *is reviewed but has no label file* and *Labels/stray.txt belongs to no image*.
 - [ ] Old browser statuses: with a `yolo_image_status` localStorage entry marking an image `deleted`, a folder whose `image_status.json` lacks that image shows it and never writes `deleted` for it; a folder without `image_status.json` still hides it, as older versions did.
+- [ ] Undo a delete that cannot be saved (read-only status file), close the browser, fix the file and reopen: the restore dialog brings the image back into the image list.
