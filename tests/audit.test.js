@@ -380,4 +380,34 @@ test('R1: an edit made while an earlier file is being written is the one saved (
   assert.match(s.saveState, /All changes saved/);
 }));
 
+test('R2: a second tab is read-only even when the browser backup has no record of the folder', { skip }, () => withBrowser(async a => {
+  const orig = ORIGINAL();
+  await putFolder(a, 'round', orig);
+  await openRound(a);
+  const b = await a.newTab();
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"'); await b.focus();
+  await sleep(300);   // tab A has gone to the background (and saved its record): now lose the record
+  await b.evaluate(`new Promise(res => { const r = indexedDB.open('yoloble'); r.onsuccess = () => { const tx = r.result.transaction('sessions', 'readwrite'); tx.objectStore('sessions').clear(); tx.oncomplete = () => { r.result.close(); res(); }; }; })`);
+  await openRound(b);
+  assert.match((await snap(b)).saveState, /Open in another window/);
+  await drag(b, { x: 0.80, y: 0.80 }, { x: 0.90, y: 0.90 });
+  await sleep(800);
+  assert.ok((await getFolder(a, 'round'))[`Labels/${IMG0}.txt`].equals(orig[`Labels/${IMG0}.txt`]), 'second tab wrote nothing');
+}));
+
+test('R2: two different folders with the same name can be worked on in two tabs', { skip }, () => withBrowser(async a => {
+  const files = ORIGINAL(), nested = {};
+  for (const [k, v] of Object.entries(files)) nested[`round/${k}`] = v;
+  await putFolder(a, 'x', nested);
+  await putFolder(a, 'y', nested);
+  const open = (t, parent) => t.evaluate(`(async () => { const r = await (await navigator.storage.getDirectory()).getDirectoryHandle('${parent}');
+    await YOLOUI._openFolder(await r.getDirectoryHandle('round')); })()`);
+  await open(a, 'x');
+  const b = await a.newTab();
+  await b.goto(base); await b.waitFor('typeof YOLOUI === "object"'); await b.focus();
+  await open(b, 'y');
+  assert.match((await snap(a)).saveState, /All changes saved/);
+  assert.match((await snap(b)).saveState, /All changes saved/);
+}));
+
 module.exports = { dropFiles, withBrowser, profileDir, loaded, ORIGINAL, IMG0 };

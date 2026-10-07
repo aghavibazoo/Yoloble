@@ -935,14 +935,9 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       }catch(e){ console.error('Could not read the browser backup',e); }
       session={key:rec?.key || key || `folder:${name}:${Date.now().toString(36)}${Math.random().toString(36).slice(2,8)}`, kind, name, handle:handle||null, names, edited:new Set(), savedLabels:rec?.labels||{},
                prelabelHash:{...(rec?.prelabelHash||{})}};
-      // Only one Yoloble window may work on a folder: a second one gets no
-      // lock, opens it read-only, keeps no backup and offers no recovery (the
-      // first window owns both).
-      if(kind==='folder' && !(await acquireFolderLock(session.key))){
-        session.readOnly=true;
-        if(folder){ folder.writable=false; folder.otherWindow=true; }
-        return rec?.current ?? null;
-      }
+      // A second window on the folder (see claimFolder) keeps no backup and
+      // offers no recovery: the first window owns both.
+      if(kind==='folder' && folder?.otherWindow){ session.readOnly=true; return rec?.current ?? null; }
       if(!rec) return null;
       const plan=YoloCore.planRecovery(rec,{labelText:n=>save.diskText.has(n)?save.diskText.get(n):null, status:n=>save.diskStatus.get(n)??null});
       const nl=plan.labels.length, ns=plan.statuses.length;
@@ -1001,19 +996,35 @@ https://github.com/nodeca/pako/blob/main/LICENSE
       }
     }
 
-    // Web Locks are shared by every tab and window of this browser profile.
-    let releaseLock=null;
-    function releaseFolderLock(){ if(releaseLock){ releaseLock(); releaseLock=null; } }
-    function acquireFolderLock(key){
+    // One window per folder. Every Yoloble tab or window of this browser
+    // profile listens on a BroadcastChannel; a window that works on a folder
+    // answers when another one opens the same folder (compared with
+    // isSameEntry, so two folders that only share a name are not confused).
+    // Claims for folders with the same name run one at a time under a Web
+    // Lock, so two windows opening a folder at once cannot both win.
+    const CLAIM_WAIT_MS=400;
+    let ownedRoot=null;
+    const folderChannel = typeof BroadcastChannel==='function' ? new BroadcastChannel('yoloble-folders') : null;
+    folderChannel?.addEventListener('message', async ev=>{
+      const m=ev.data;
+      if(m?.type==='who' && ownedRoot && m.handle && await sameEntry(ownedRoot, m.handle)) folderChannel.postMessage({type:'mine', id:m.id});
+    });
+    function releaseFolderLock(){ ownedRoot=null; }
+    async function claimFolder(handle){
       releaseFolderLock();
-      if(!navigator.locks) return Promise.resolve(true);
-      return new Promise(res=>{
-        navigator.locks.request('yoloble:'+key,{ifAvailable:true},lock=>{
-          if(!lock){ res(false); return; }
-          res(true);
-          return new Promise(r=>{ releaseLock=r; }); // held until another folder is opened or the tab closes
-        }).catch(e=>{ console.error('Web Lock failed',e); res(true); });
-      });
+      if(!folderChannel) return true;
+      const ask=async()=>{
+        const id=`${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+        let taken=false;
+        const onMsg=ev=>{ if(ev.data?.type==='mine' && ev.data.id===id) taken=true; };
+        folderChannel.addEventListener('message',onMsg);
+        try{ folderChannel.postMessage({type:'who', id, handle}); await new Promise(r=>setTimeout(r,CLAIM_WAIT_MS)); }
+        finally{ folderChannel.removeEventListener('message',onMsg); }
+        if(!taken) ownedRoot=handle; // registered before the next claim may ask
+        return !taken;
+      };
+      try{ return navigator.locks ? await navigator.locks.request('yoloble-claim:'+handle.name, ask) : await ask(); }
+      catch(e){ console.error('Could not check for other windows',e); return true; }
     }
 
     function showNotice(msg){ $("noticeBannerMsg").textContent=msg; $("noticeBanner").className='banner warn show'; }
@@ -2500,6 +2511,7 @@ Generated: ${new Date().toISOString()}`;
       const extraStatus=new Map([...statusEntries].filter(([n])=>!lowerNames.has(norm(n))));
       folder={root:rootHandle, name:rootHandle.name, writable, labelsDir:labelsHandle, imageNames:allImageNames, labelFiles:new Map(), extraStatus, classesText,
               statusProblem, statusRaw};
+      if(!(await claimFolder(rootHandle))){ folder.writable=false; folder.otherWindow=true; }
       // Writing would replace the status file with what Yoloble could make of
       // it and lose the reviews in it: stay read-only until the reviewer decides.
       if(statusProblem) folder.writable=false;

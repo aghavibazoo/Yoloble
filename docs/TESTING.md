@@ -173,3 +173,4 @@ Tick each line. Each line was added with the change it covers.
 - [ ] README "Browser support and limits" matches what the app does (one writing window per folder, the pre-label trust rule, offline ZIP).
 - [ ] The bundle's `project.json` has `"round_id": 3` for the sample round, so `irs ingest --round N --export` refuses a ZIP of another round.
 - [ ] Save queue (R1): on a slow disk edit three images in a row, then edit the third again while the second is still saving: after **All changes saved**, the third label file has both edits.
+- [ ] Second window without a backup record (R2): open the round in one tab; in DevTools > Application > IndexedDB > yoloble > sessions, clear the store; open the same folder in a second tab: it is read-only. Two different folders that are both called `round_003` open writable in two tabs.
