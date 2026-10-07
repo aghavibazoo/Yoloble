@@ -22,7 +22,8 @@ Folder and file names are case-sensitive as shown. Yoloble's folder import requi
 ## Images
 
 - JPEG, full original resolution, unmasked.
-- Name: `<site_id>__<video_id>__f<frame>.jpg`, where `frame` is the zero-based frame index in the source video.
+- Name: `<site_id>__<video_id>__f<frame>.jpg`, where `frame` is the zero-based frame index in the source video, zero-padded to six digits (`f004512`).
+- An image of the review backlog (a legacy image whose copies were labeled differently, so it has no source video) is copied unchanged from the dataset pool and named `backlog__<image_sha256><ext>` (`.jpg` for the current backlog).
 - Yoloble never modifies or writes images.
 
 ## Labels
@@ -30,16 +31,17 @@ Folder and file names are case-sensitive as shown. Yoloble's folder import requi
 - One `.txt` per image, same base name: `Images/a.jpg` ↔ `Labels/a.txt`.
 - One box per line: `<class_id> <x_center> <y_center> <width> <height>`, values normalised to 0–1, space-separated.
 - As written by `irs queue`, these are model pre-labels (confidence of at least 0.25). After review they are the human-corrected labels.
-- An empty file on an image with status `reviewed` means a confirmed empty frame. An empty or missing file on any other image means nothing.
+- An empty file on an image with status `reviewed` means a confirmed empty frame. An empty or missing file on any other image means nothing. A `reviewed` image without a label file is an error at ingest (a missing file is not a decision).
+- `irs queue` writes LF line endings and a final newline; Yoloble writes no final newline. Both are accepted.
 
 ## classes.txt
 
-- UTF-8, one name per line, no blank lines. Line 1 is class ID 0.
+- UTF-8, one name per line, no blank lines. Line 1 is class ID 0. `irs queue` ends the file with a newline; a file without one (as Yoloble writes) is the same list.
 - Written by `irs queue` from the current class list. Yoloble must not reorder it. Ingest rejects a round whose `classes.txt` differs from the class list in `round.json`.
 
 ## image_status.json
 
-A JSON array, one entry per image, keyed by image file name:
+A JSON array, one entry per image, keyed by image file name. `irs queue` writes it sorted by name, indented by two spaces. Ingest matches names case-insensitively (Yoloble lower-cases them); an image without an entry is `unlabeled`.
 
 ```json
 [
@@ -65,6 +67,7 @@ Written by `irs queue`. Yoloble reads it and never changes it.
 {
   "format_version": 1,
   "round_id": 3,
+  "kind": "training",
   "model_id": "m0005",
   "created": "2026-10-03T20:00:00Z",
   "classes": ["car", "pickup", "..."],
@@ -73,13 +76,28 @@ Written by `irs queue`. Yoloble reads it and never changes it.
       "reason": "rare_class",
       "reason_text": "rare class: 3ax Bus",
       "scores": {"rarity": 0.82, "uncertainty": 0.10, "disagreement": 0.0},
-      "prelabel_conf": [0.91, 0.47, 0.33]
+      "prelabel_conf": [0.91, 0.47, 0.33],
+      "source": {"site_id": "clark_ave_01", "video_id": "a1b2c3", "frame": 4512,
+                 "time_s": 150.4, "local_time": "2025-03-25T17:02:30.400000-07:00",
+                 "path": "/mnt/d/.../DSCF0246.MP4"}
+    },
+    "backlog__e3b0c442...b855.jpg": {
+      "reason": "legacy_conflict",
+      "reason_text": "legacy image labeled differently in 2 copies (17 vs 19 boxes; split train): correct the boxes, label every vehicle",
+      "scores": {"rarity": 0.0, "uncertainty": 0.0, "disagreement": 0.0},
+      "prelabel_conf": [0.93, 0.88],
+      "legacy_variants": [
+        {"path": "train/images/Yolotraining (619).jpg", "split": "train", "boxes": 17, "label_text": "3 0.320196 ..."},
+        {"path": "train/images/Yolotraining (76).jpg", "split": "train", "boxes": 19, "label_text": "3 0.319343 ..."}
+      ]
     }
   }
 }
 ```
 
-- `reason` is one of `rare_class`, `uncertainty`, `disagreement`, `random`. `reason_text` is the human-readable banner.
+- `kind` is `training` (frames for a new dataset version) or `test` (frames of the held-out test site for the frozen test set: every vehicle must be boxed, the frame measures the model).
+- `reason` is one of `rare_class`, `uncertainty`, `disagreement`, `random`, `legacy_conflict` (an image of the review backlog) or `test_set` (a frame of a test round). `reason_text` is the human-readable banner.
+- `source` (frames of a video) says where the frame comes from; `legacy_variants` (backlog images) lists the conflicting legacy labels for reference only: the file in `Labels/` holds model pre-labels like every other image. Both are informational; readers ignore keys they do not know.
 - `prelabel_conf[i]` is the confidence of line `i` of the image's pre-label file as written by `irs queue`. It no longer applies once the reviewer edits the file.
 - Ingest refuses a folder whose `format_version` it does not support.
 
@@ -92,3 +110,18 @@ When the folder cannot be written, Yoloble's ZIP export is accepted with `irs in
 - Write each file to a temporary name and rename it into place.
 - Never write outside the round folder.
 - Never write to `Images/` or `round.json` after `irs queue` has finished.
+
+## Changes within format version 1
+
+Additions made in phase 3 (2026-10-06). They are compatible: a reader that ignores unknown keys and shows `reason_text` as the banner needs no change, so `format_version` stays 1.
+
+| Change | Yoloble |
+|---|---|
+| `round.json`: top-level `kind` (`training` or `test`) | may show it (a test round needs complete boxes) |
+| `round.json`: `reason` may also be `legacy_conflict` or `test_set` | must accept them (show `reason_text`) |
+| `round.json`: per image `source` (frames) and `legacy_variants` (backlog images) | optional to show; must not reject them |
+| Review-backlog images named `backlog__<image_sha256><ext>` | nothing (names are opaque) |
+| Frame number zero-padded to six digits | nothing |
+| `classes.txt` ends with a newline when written by `irs queue` | must not treat the final newline as a blank line or an extra class |
+| A `reviewed` image needs a label file (empty = confirmed empty) | save an empty file for a confirmed empty frame |
+
