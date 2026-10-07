@@ -29,7 +29,7 @@ Tick each line. Each line was added with the change it covers.
 
 ### Sample round
 
-- [ ] `python tools/make_sample_round.py --out %TEMP%\round_new` writes `Images/` (12 JPEGs), `Labels/`, `classes.txt` (the 9 irs classes), `image_status.json` (all `unlabeled`) and `round.json` (`format_version` 1), and nothing else. `samples/round_sample` was made this way. Deliberate problems in it: `clark_ave_01__a1b2c3d4__f016352.jpg` has no vehicles, `clark_ave_01__e5f60718__f014209.jpg` has a duplicate pre-label and `hwy7_east__0badc0de__f021759.jpg` a near-zero-size one; in `clark_ave_01__e5f60718__f007343.jpg` the model missed a vehicle.
+- [ ] `python tools/make_sample_round.py --out %TEMP%\round_new` writes `Images/` (12 JPEGs), `Labels/`, `classes.txt` (the 9 irs classes), `image_status.json` (all `unlabeled`) and `round.json` (`format_version` 1), and nothing else. `samples/round_sample` was made this way. Deliberate problems in it: `clark_ave_01__a1b2c3d4__f010808.jpg` has no vehicles (empty pre-label file), `clark_ave_01__e5f60718__f014209.jpg` has a duplicate pre-label and `hwy7_east__0badc0de__f015197.jpg` a near-zero-size one; in `hwy7_east__0badc0de__f008412.jpg` the model missed a vehicle.
 
 ### Save back to the folder
 
