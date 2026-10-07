@@ -310,7 +310,8 @@ test('reason banner shows why each frame was selected, and the round in the head
   files['round.json'] = Buffer.from(JSON.stringify(rj));
   await putFolder(b, 'round', files);
   await openRound(b);
-  assert.deepEqual(await banner(), { show: true, chip: 'Rare class', text: 'rare class: 3ax Bus', title: 'Selection scores: rarity 0.82 · uncertainty 0.00 · disagreement 0.00', round: 'Round 3 · model m0005' });
+  assert.deepEqual(await banner(), { show: true, chip: 'Rare class', text: 'rare class: 3ax Bus', round: 'Round 3 · model m0005',
+    title: 'Selection scores: rarity 0.82 · uncertainty 0.00 · disagreement 0.00\nSource: clark_ave_01 · video a1b2c3d4 · frame 6138 · 2025-03-25T17:05:24.600000-07:00' });
   await b.evaluate('YOLOUI._gotoIndex(2)');
   await b.waitFor('YOLOUI._snapshot().owner === YOLOUI._snapshot().name && YOLOUI._snapshot().index === 2');
   let r = await banner();
@@ -320,6 +321,19 @@ test('reason banner shows why each frame was selected, and the round in the head
   await b.waitFor('YOLOUI._snapshot().owner === YOLOUI._snapshot().name && YOLOUI._snapshot().index === 3');
   r = await banner();
   assert.equal(r.chip, 'Not in round');
+
+  // A test round with a review-backlog image (format 1 additions).
+  const t = ORIGINAL(), tj = JSON.parse(t['round.json']);
+  tj.kind = 'test';
+  Object.assign(tj.images['clark_ave_01__a1b2c3d4__f006138.jpg'], { reason: 'legacy_conflict', reason_text: 'legacy image labeled differently in 2 copies (17 vs 19 boxes)',
+    legacy_variants: [{ path: 'train/images/Yolotraining (619).jpg', split: 'train', boxes: 17 }, { path: 'train/images/Yolotraining (76).jpg', split: 'train', boxes: 19 }] });
+  t['round.json'] = Buffer.from(JSON.stringify(tj));
+  await putFolder(b, 'testround', t);
+  await openRound(b, 'testround');
+  r = await banner();
+  assert.equal(r.round, 'TEST round 3 · model m0005');
+  assert.equal(r.chip, 'Legacy conflict');
+  assert.match(r.title, /\nLegacy copies: train\/images\/Yolotraining \(619\)\.jpg \(17 boxes\); train\/images\/Yolotraining \(76\)\.jpg \(19 boxes\)$/);
 
   const legacy = ORIGINAL(); delete legacy['round.json'];
   await putFolder(b, 'legacy', legacy);

@@ -1,6 +1,7 @@
 {
   "format_version": 1,
   "round_id": 3,
+  "kind": "training",
   "model_id": "m0005",
   "created": "2026-10-03T20:00:00Z",
   "classes": [
@@ -27,7 +28,15 @@
         0.81,
         0.79,
         0.65
-      ]
+      ],
+      "source": {
+        "site_id": "clark_ave_01",
+        "video_id": "a1b2c3d4",
+        "frame": 6138,
+        "time_s": 204.6,
+        "local_time": "2025-03-25T17:05:24.600000-07:00",
+        "path": "synthetic/a1b2c3d4.MP4"
+      }
     },
     "clark_ave_01__e5f60718__f007343.jpg": {
       "reason": "uncertainty",
@@ -39,7 +48,15 @@
       },
       "prelabel_conf": [
         0.42
-      ]
+      ],
+      "source": {
+        "site_id": "clark_ave_01",
+        "video_id": "e5f60718",
+        "frame": 7343,
+        "time_s": 244.8,
+        "local_time": "2025-03-25T17:06:04.766667-07:00",
+        "path": "synthetic/e5f60718.MP4"
+      }
     },
     "hwy7_east__0badc0de__f008412.jpg": {
       "reason": "disagreement",
@@ -52,7 +69,15 @@
       "prelabel_conf": [
         0.7,
         0.68
-      ]
+      ],
+      "source": {
+        "site_id": "hwy7_east",
+        "video_id": "0badc0de",
+        "frame": 8412,
+        "time_s": 280.4,
+        "local_time": "2025-03-25T17:06:40.400000-07:00",
+        "path": "synthetic/0badc0de.MP4"
+      }
     },
     "clark_ave_01__a1b2c3d4__f010808.jpg": {
       "reason": "random",
@@ -62,7 +87,15 @@
         "uncertainty": 0.0,
         "disagreement": 0.0
       },
-      "prelabel_conf": []
+      "prelabel_conf": [],
+      "source": {
+        "site_id": "clark_ave_01",
+        "video_id": "a1b2c3d4",
+        "frame": 10808,
+        "time_s": 360.3,
+        "local_time": "2025-03-25T17:08:00.266667-07:00",
+        "path": "synthetic/a1b2c3d4.MP4"
+      }
     },
     "clark_ave_01__e5f60718__f014209.jpg": {
       "reason": "uncertainty",
@@ -77,7 +110,15 @@
         0.83,
         0.79,
         0.31
-      ]
+      ],
+      "source": {
+        "site_id": "clark_ave_01",
+        "video_id": "e5f60718",
+        "frame": 14209,
+        "time_s": 473.6,
+        "local_time": "2025-03-25T17:09:53.633333-07:00",
+        "path": "synthetic/e5f60718.MP4"
+      }
     },
     "hwy7_east__0badc0de__f015197.jpg": {
       "reason": "uncertainty",
@@ -94,7 +135,15 @@
         0.63,
         0.58,
         0.27
-      ]
+      ],
+      "source": {
+        "site_id": "hwy7_east",
+        "video_id": "0badc0de",
+        "frame": 15197,
+        "time_s": 506.6,
+        "local_time": "2025-03-25T17:10:26.566667-07:00",
+        "path": "synthetic/0badc0de.MP4"
+      }
     },
     "clark_ave_01__a1b2c3d4__f016352.jpg": {
       "reason": "uncertainty",
@@ -107,7 +156,15 @@
       "prelabel_conf": [
         0.37,
         0.36
-      ]
+      ],
+      "source": {
+        "site_id": "clark_ave_01",
+        "video_id": "a1b2c3d4",
+        "frame": 16352,
+        "time_s": 545.1,
+        "local_time": "2025-03-25T17:11:05.066667-07:00",
+        "path": "synthetic/a1b2c3d4.MP4"
+      }
     },
     "clark_ave_01__e5f60718__f018633.jpg": {
       "reason": "random",
@@ -119,7 +176,15 @@
       },
       "prelabel_conf": [
         0.75
-      ]
+      ],
+      "source": {
+        "site_id": "clark_ave_01",
+        "video_id": "e5f60718",
+        "frame": 18633,
+        "time_s": 621.1,
+        "local_time": "2025-03-25T17:12:21.100000-07:00",
+        "path": "synthetic/e5f60718.MP4"
+      }
     },
     "hwy7_east__0badc0de__f021759.jpg": {
       "reason": "random",
@@ -135,7 +200,15 @@
         0.88,
         0.81,
         0.59
-      ]
+      ],
+      "source": {
+        "site_id": "hwy7_east",
+        "video_id": "0badc0de",
+        "frame": 21759,
+        "time_s": 725.3,
+        "local_time": "2025-03-25T17:14:05.300000-07:00",
+        "path": "synthetic/0badc0de.MP4"
+      }
     },
     "clark_ave_01__a1b2c3d4__f023836.jpg": {
       "reason": "random",
@@ -147,7 +220,15 @@
       },
       "prelabel_conf": [
         0.72
-      ]
+      ],
+      "source": {
+        "site_id": "clark_ave_01",
+        "video_id": "a1b2c3d4",
+        "frame": 23836,
+        "time_s": 794.5,
+        "local_time": "2025-03-25T17:15:14.533333-07:00",
+        "path": "synthetic/a1b2c3d4.MP4"
+      }
     },
     "clark_ave_01__e5f60718__f026042.jpg": {
       "reason": "random",
@@ -163,7 +244,15 @@
         0.88,
         0.64,
         0.61
-      ]
+      ],
+      "source": {
+        "site_id": "clark_ave_01",
+        "video_id": "e5f60718",
+        "frame": 26042,
+        "time_s": 868.1,
+        "local_time": "2025-03-25T17:16:28.066667-07:00",
+        "path": "synthetic/e5f60718.MP4"
+      }
     },
     "hwy7_east__0badc0de__f029136.jpg": {
       "reason": "uncertainty",
@@ -175,7 +264,15 @@
       },
       "prelabel_conf": [
         0.27
-      ]
+      ],
+      "source": {
+        "site_id": "hwy7_east",
+        "video_id": "0badc0de",
+        "frame": 29136,
+        "time_s": 971.2,
+        "local_time": "2025-03-25T17:18:11.200000-07:00",
+        "path": "synthetic/0badc0de.MP4"
+      }
     }
   }
 }

@@ -140,3 +140,7 @@ Tick each line. Each line was added with the change it covers.
 - [ ] With a folder open, drop a `.txt` label file onto the window: Yoloble refuses with a message and nothing changes on disk.
 - [ ] A label line with class `12` (9 classes) and an image file that is not a real JPEG: the folder still opens; Checks flags the class; the broken image shows a message and can be deleted.
 - [ ] Copy a round without `classes.txt`: the class names come from `round.json` (Finish round still reports the missing file).
+
+### round.json additions within format 1
+
+- [ ] In a copy of the sample, set `"kind": "test"` in `round.json` and give one image `"reason": "legacy_conflict"` with a `legacy_variants` list: the header shows **TEST round 3** (hover: box every vehicle), the banner shows **LEGACY CONFLICT** with its `reason_text`, and hovering lists the legacy copies. Hovering the banner on a normal frame shows its source (site, video, frame, local time). Unknown keys in `round.json` are ignored.

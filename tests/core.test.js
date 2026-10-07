@@ -176,9 +176,27 @@ test('parseRoundJson reads the sample round', () => {
   assert.equal(r.round.formatVersion, 1);
   assert.equal(r.round.roundId, 3);
   assert.equal(r.round.modelId, 'm0005');
+  assert.equal(r.round.kind, 'training');
   assert.deepEqual(r.round.classes, IRS_CLASSES);
   const e = r.round.images.get('clark_ave_01__a1b2c3d4__f006138.jpg');
-  assert.deepEqual(e, { reason: 'rare_class', reasonText: 'rare class: 3ax Bus', scores: { rarity: 0.82, uncertainty: 0, disagreement: 0 }, prelabelConf: [0.81, 0.79, 0.65] });
+  assert.deepEqual(e, { reason: 'rare_class', reasonText: 'rare class: 3ax Bus', scores: { rarity: 0.82, uncertainty: 0, disagreement: 0 }, prelabelConf: [0.81, 0.79, 0.65],
+    source: { site_id: 'clark_ave_01', video_id: 'a1b2c3d4', frame: 6138, time_s: 204.6, local_time: '2025-03-25T17:05:24.600000-07:00', path: 'synthetic/a1b2c3d4.MP4' },
+    legacyVariants: null });
+});
+
+test('parseRoundJson accepts the format-1 additions: kind, new reasons, legacy_variants, unknown keys', () => {
+  const r = C.parseRoundJson(JSON.stringify({ format_version: 1, round_id: 9, kind: 'test', future_key: { a: 1 }, classes: IRS_CLASSES, images: {
+    'backlog__e3b0.jpg': { reason: 'legacy_conflict', reason_text: 'legacy image labeled differently in 2 copies', scores: {}, prelabel_conf: [0.93],
+      legacy_variants: [{ path: 'train/images/a.jpg', split: 'train', boxes: 17 }, 'junk'], another_future_key: 1 },
+    'x.jpg': { reason: 'test_set', reason_text: 'test frame', prelabel_conf: [] } } }));
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.warnings, []);
+  assert.equal(r.round.kind, 'test');
+  const e = r.round.images.get('backlog__e3b0.jpg');
+  assert.equal(e.reason, 'legacy_conflict');
+  assert.deepEqual(e.legacyVariants, [{ path: 'train/images/a.jpg', split: 'train', boxes: 17 }]);
+  assert.equal(r.round.images.get('x.jpg').reason, 'test_set');
+  assert.equal(C.parseRoundJson('{"format_version":1,"classes":["a"],"images":{}}').round.kind, null);
 });
 
 test('parseRoundJson refuses bad JSON and unsupported versions, and warns on bad entries', () => {

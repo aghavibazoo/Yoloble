@@ -104,6 +104,16 @@ def prelabels(rng, vehicles, special):
     return rows
 
 
+def source_for(site, video, frame, fps=30.0):
+    """round.json "source" of a synthetic frame (informational, like irs queue writes it)."""
+    t = frame / fps
+    base = 17 * 3600 + 2 * 60  # the synthetic videos start at 17:02:00 local time
+    h, rem = divmod(base + t, 3600)
+    m, sec = divmod(rem, 60)
+    return {"site_id": site, "video_id": video, "frame": frame, "time_s": round(t, 1),
+            "local_time": f"2025-03-25T{int(h):02d}:{int(m):02d}:{sec:09.6f}-07:00", "path": f"synthetic/{video}.MP4"}
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--out", default=str(Path(__file__).resolve().parent.parent / "samples" / "round_sample"))
@@ -150,12 +160,13 @@ def main():
                        "uncertainty": round(min(1.0, unsure / 3), 2),
                        "disagreement": 1.0 if reason == "disagreement" else 0.0},
             "prelabel_conf": [r[5] for r in rows],
+            "source": source_for(site, video, frame),
         }
         status.append({"name": name, "status": "unlabeled"})
 
     (out / "classes.txt").write_text("".join(c + "\n" for c in CLASSES), encoding="utf-8", newline="\n")
     (out / "image_status.json").write_text(json.dumps(status, indent=2) + "\n", encoding="utf-8", newline="\n")
-    rnd = {"format_version": 1, "round_id": args.round_id, "model_id": "m0005", "created": "2026-10-03T20:00:00Z",
+    rnd = {"format_version": 1, "round_id": args.round_id, "kind": "training", "model_id": "m0005", "created": "2026-10-03T20:00:00Z",
            "classes": CLASSES, "images": images}
     (out / "round.json").write_text(json.dumps(rnd, indent=2) + "\n", encoding="utf-8", newline="\n")
     print(f"wrote {args.frames} frames to {out}")

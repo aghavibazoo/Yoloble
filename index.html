@@ -130,6 +130,8 @@
     .reason-banner{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:20;display:none;align-items:center;gap:10px;background:rgba(20,20,20,.9);border:1px solid #555;border-radius:6px;padding:6px 14px;font-size:15px;max-width:calc(100% - 80px);pointer-events:auto}
     .reason-banner.show{display:flex}
     .reason-chip{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:10px;white-space:nowrap;color:#fff}
+    .reason-chip.legacy_conflict{background:#b9770e}.reason-chip.test_set{background:#117a65}
+    .round-info.test{color:#fff;background:#117a65;padding:3px 8px;border-radius:10px;font-weight:600}
     .reason-chip.rare_class{background:#8e44ad}.reason-chip.uncertainty{background:#d35400}.reason-chip.disagreement{background:#c0392b}.reason-chip.random{background:#5d6d7e}.reason-chip.other{background:#34495e}.reason-chip.missing{background:#a32020}
     .round-info{font-size:13px;color:#bbb;white-space:nowrap}
     .check-item{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:4px;background:#3a2a2a;margin-bottom:4px;font-size:12px;cursor:pointer;border-left:3px solid #e74c3c}
@@ -558,10 +560,13 @@
           const conf=Array.isArray(e.prelabel_conf) && e.prelabel_conf.every(c=>typeof c==='number' && Number.isFinite(c)) ? e.prelabel_conf.slice() : null;
           if(e.prelabel_conf!==undefined && !conf) warnings.push(`round.json: prelabel_conf of ${name} is not a list of numbers`);
           images.set(name,{reason:typeof e.reason==='string'?e.reason:null, reasonText:typeof e.reason_text==='string'?e.reason_text:null,
-                           scores:isObj(e.scores)?e.scores:{}, prelabelConf:conf});
+                           scores:isObj(e.scores)?e.scores:{}, prelabelConf:conf,
+                           source:isObj(e.source)?e.source:null, legacyVariants:Array.isArray(e.legacy_variants)?e.legacy_variants.filter(isObj):null});
         }
       } else warnings.push('round.json has no "images" object');
-      return {ok:true, warnings, round:{formatVersion:v, roundId:j.round_id ?? null, modelId:j.model_id ?? null, created:j.created ?? null, classes, images}};
+      // Unknown keys are ignored (format 1 grows by compatible additions).
+      const kind=typeof j.kind==='string' ? j.kind : null;
+      return {ok:true, warnings, round:{formatVersion:v, roundId:j.round_id ?? null, modelId:j.model_id ?? null, created:j.created ?? null, kind, classes, images}};
     }
     // prelabel_conf[i] is the confidence of line i of the pre-label file as
     // irs queue wrote it. It applies only while that file is unchanged: not
@@ -1616,11 +1621,24 @@
       else { pill.className='status-pill todo'; pill.textContent='Not reviewed'; pill.title=st==='labeled'?'Has boxes (pre-labels or edits) but nobody has confirmed them yet':'Not reviewed yet'; pill.onclick=null; }
     }
     // Why irs selected this frame (round.json reason / reason_text).
-    const REASON_LABELS={rare_class:'Rare class', uncertainty:'Low confidence', disagreement:'Track disagreement', random:'Random sample'};
+    const REASON_LABELS={rare_class:'Rare class', uncertainty:'Low confidence', disagreement:'Track disagreement', random:'Random sample',
+                         legacy_conflict:'Legacy conflict', test_set:'Test set'};
+    // Hover text for the banner: selection scores, where the frame comes from, legacy copies.
+    function reasonDetails(e){
+      const lines=[];
+      const sc=Object.entries(e.scores||{}).filter(([,v])=>typeof v==='number').map(([k,v])=>`${k} ${v.toFixed(2)}`).join(' · ');
+      if(sc) lines.push(`Selection scores: ${sc}`);
+      const s=e.source;
+      if(s) lines.push('Source: '+[s.site_id, s.video_id&&`video ${s.video_id}`, Number.isFinite(s.frame)&&`frame ${s.frame}`, s.local_time||(Number.isFinite(s.time_s)&&`${s.time_s.toFixed(1)} s`)].filter(Boolean).join(' · '));
+      if(e.legacyVariants?.length) lines.push('Legacy copies: '+e.legacyVariants.map(v=>`${v.path||'?'}${Number.isFinite(v.boxes)?` (${v.boxes} boxes)`:''}`).join('; '));
+      return lines.join('\n');
+    }
     function updateReasonBanner(){
       const banner=$("reasonBanner"), chip=$("reasonChip"), text=$("reasonText"), info=$("roundInfo");
-      info.textContent = round ? [round.roundId!==null?`Round ${round.roundId}`:'Round', round.modelId?`model ${round.modelId}`:''].filter(Boolean).join(' · ') : '';
-      info.title = round ? `round.json format ${round.formatVersion}${round.created?`, queued ${round.created}`:''}` : '';
+      const test=round?.kind==='test';
+      info.textContent = round ? [test?'TEST round':'Round', round.roundId!==null?String(round.roundId):''].filter(Boolean).join(' ')+(round.modelId?` · model ${round.modelId}`:'') : '';
+      info.className='round-info'+(test?' test':'');
+      info.title = round ? (test?'Test round: box every vehicle; these frames measure the model.\n':'')+`round.json format ${round.formatVersion}${round.created?`, queued ${round.created}`:''}` : '';
       if(!round || boxesOwner===null){ banner.classList.remove('show'); return; }
       const e=round.images.get(boxesOwner);
       banner.classList.add('show');
@@ -1631,8 +1649,7 @@
       const known=REASON_LABELS[e.reason];
       chip.className='reason-chip '+(known?e.reason:'other'); chip.textContent=known || e.reason || 'Selected';
       text.textContent=e.reasonText || (known ? '' : '(no reason given)');
-      const sc=Object.entries(e.scores||{}).filter(([,v])=>typeof v==='number').map(([k,v])=>`${k} ${v.toFixed(2)}`).join(' · ');
-      banner.title=sc ? `Selection scores: ${sc}` : '';
+      banner.title=reasonDetails(e);
     }
     // U: select and zoom to the next unchecked model box, least confident first.
     let uncertainCursor=-1;
